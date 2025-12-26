@@ -1,0 +1,28 @@
+# Virtual environment
+admet_challenge/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CatBoost
+catboost_info/
+
+# Large model files (optional - uncomment to exclude)
+# models/*.joblib
+
+# Session logs (optional)
+# 2025-*.txt

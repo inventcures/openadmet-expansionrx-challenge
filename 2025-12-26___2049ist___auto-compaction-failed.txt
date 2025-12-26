@@ -1,0 +1,905 @@
+
+╭─── Claude Code v2.0.76 ──────────────────────────────────────────────────────╮
+│                                      │ Tips for getting started              │
+│          Welcome back tp53!          │ Run /init to create a CLAUDE.md file… │
+│                                      │ ───────────────────────────────────── │
+│              * ▐▛███▜▌ *             │ Recent activity                       │
+│             * ▝▜█████▛▘ *            │ No recent activity                    │
+│              *  ▘▘ ▝▝  *             │                                       │
+│                                      │                                       │
+│     Opus 4.5 · Claude Max · tp53     │                                       │
+│   ~/…/26dec2025_opeadmet-challenge   │                                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  A gift for you
+  Your rate limits are 2x higher through 12/31. Enjoy the extra room to think!
+
+> /clear 
+  ⎿  (no content)
+
+> 1. We are participating in an ADMET prediction using ml challenge 
+2.  Read the following links 
+https://openadmet.ghost.io/openadmet-expansionrx-blind-challenge/ 
+https://openadmet.ghost.io/openadmet-expansionrx-blind-challenge-2/ 
+https://huggingface.co/spaces/openadmet/OpenADMET-ExpansionRx-Challenge?ref=
+openadmet.ghost.io 
+
+also refer to @docs/machine-learning-adme-models-in-practice-four-guidelines
+-from-a-successful-lead-optimization-case-study.pdf
+
+3. Do a deep reserch on building the most scientifically accurate and 
+performant model or ensemble of models, with sound architectural decisions 
+to eventually end up at the top of the leaderboard for this challenge 
+
+4. Also refer to this youtube video by Pat wAlters, of Relation TX 
+https://www.youtube.com/watch?v=9v0Ej_FL6k0 
+5. summary in 
+@/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-challeng
+e/2025-12-26-1-we-are-participating-in-an-admet-prediction-usi.txt 
+
+⏺ I see you've shared the summary of our previous session. Let me check the current state of the project and continue from where we left off.
+
+⏺ Bash(ls -la /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/)
+  ⎿  total 144                                        
+     drwxr-xr-x  17 tp53  staff    544 Dec 26 19:29 .
+     drwxr-xr-x  49 tp53  staff   1568 Dec 26 09:55 ..
+     … +17 lines (ctrl+o to expand)
+
+⏺ Bash(ls -la /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/submissions/ 2>/dev/null || echo "No submissions yet")
+  ⎿  total 784                                         
+     drwxr-xr-x@  3 tp53  staff      96 Dec 26 19:30 .
+     drwxr-xr-x  17 tp53  staff     544 Dec 26 19:29 ..
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(ls -la /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/models/ 2>/dev/null || echo "No models yet")
+  ⎿  total 39264                                        
+     drwxr-xr-x@ 11 tp53  staff      352 Dec 26 19:29 .
+     drwxr-xr-x  17 tp53  staff      544 Dec 26 19:29 ..
+     … +11 lines (ctrl+o to expand)
+
+⏺ The baseline model completed. We have 9 trained models and a submission file. Let me check the results:
+
+⏺ Bash(head -20 /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadm
+      et-challenge/submissions/baseline_xgb_submission.csv)
+  ⎿ Molecule Name,LogD,KSOL,HLM CLint,MLM CLint,Caco-2 Permeability Papp A>
+    B,Caco-2 Permeability Efflux,MPPB,MBPB,MGMB
+    E-0020101,1.9094101205413325,95.81501029609312,30.18790226672041,379.04
+    … +56 lines (ctrl+o to expand)
+
+
+
+⏺ Bash(wc -l /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-
+      challenge/submissions/baseline_xgb_submission.csv)
+  ⎿     2283 /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opea
+    dmet-challenge/submissions/baseline_xgb_submission.csv
+
+
+⏺ Bash(ls -la /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/src/)
+  ⎿  total 32                                        
+     drwxr-xr-x@  4 tp53  staff   128 Dec 26 19:08 .
+     drwxr-xr-x  17 tp53  staff   544 Dec 26 19:29 ..
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/admet_challenge/bin/activate && python3 << 'EOF'
+      import pandas as pd…)
+  ⎿  TEST DATA:                          
+     Shape: (2282, 2)
+     Columns: ['Molecule Name', 'SMILES']
+     … +29 lines (ctrl+o to expand)
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/admet_challenge/bin/activate && python3 << 'EOF'
+      import pandas as pd…)
+  ⎿  TRAINING DATA STATISTICS (for clipping bounds):                       
+     ======================================================================
+     … +62 lines (ctrl+o to expand)
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/admet_challenge/bin/activate && python3 << 'EOF'
+      import pandas as pd…)
+  ⎿  Clipping predictions to valid ranges...
+       KSOL: clipped 27 values
+       HLM CLint: clipped 17 values
+     … +20 lines (ctrl+o to expand)
+
+⏺ Now let me build a multi-task learning model to leverage correlations between endpoints:
+
+⏺ Write(src/multitask_model.py)
+  ⎿  Wrote 427 lines to src/multitask_model.py                           
+      1 """
+      2 Multi-Task Learning Model for ADMET Prediction
+      3 Leverages correlations between endpoints (especially MBPB↔MGMB, L
+        ogD↔MPPB, HLM↔MLM)
+      4 """
+      5 import pandas as pd
+      6 import numpy as np
+      7 from pathlib import Path
+      8 import warnings
+      9 warnings.filterwarnings('ignore')
+     … +417 lines (ctrl+o to expand)
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec timeout: 
+      2025_opeadmet-challenge/admet_challenge/bin/activate &&       10m 0s
+      python3 /Users/tp53/Documents/code_macbook-a…)
+  ⎿  Running in the background (↓ to manage)
+
+⏺ Bash(tail -100 /tmp/claude/-Users-tp53-Documents-code-macbook-air-m1--tp53-26d
+      ec2025-opeadmet-challenge/tasks/b55fe29.output)
+  ⎿  [19:52:23] DEPRECATION WARNING: please use MorganGenerator
+     [19:52:23] DEPRECATION WARNING: please use MorganGenerator
+     [19:52:23] DEPRECATION WARNING: please use MorganGenerator
+     … +100 lines (ctrl+o to expand)
+
+⏺ Task Output b55fe29
+  ⎿  Interrupted · What should Claude do instead?
+
+> /tasks 
+  ⎿  Shell details dismissed
+
+> /status 
+  ⎿  Status dialog dismissed
+
+> resume next task in task list 
+
+⏺ Let me check the current state and continue with the next tasks:
+
+⏺ Bash(ls -la /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/submissions/)
+  ⎿  total 1568                                        
+     drwxr-xr-x@  4 tp53  staff     128 Dec 26 19:49 .
+     drwxr-xr-x  17 tp53  staff     544 Dec 26 19:29 ..
+     … +4 lines (ctrl+o to expand)
+
+⏺ Bash(ps aux | grep python | grep -v grep | head -5)
+  ⎿ tp53             13865 552.9  4.7 413697488 394688   ??  R     7:52PM  
+    29:28.06 /opt/homebrew/Cellar/python@3.12/3.12.4/Frameworks/Python.fram
+    ework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python /Users/t
+    … +15 lines (ctrl+o to expand)
+
+
+
+⏺ The multi-task model is still running (29 minutes). Let me check its progress:
+
+⏺ Bash(tail -50 /tmp/claude/-Users-tp53-Documents-code-macbook-air-m1--tp53-26de
+      c2025-opeadmet-challenge/tasks/b55fe29.output 2>/dev/null || echo "Output
+      file not foun…)
+  ⎿  [19:52:24] DEPRECATION WARNING: please use MorganGenerator
+     [19:52:24] DEPRECATION WARNING: please use MorganGenerator
+     [19:52:24] DEPRECATION WARNING: please use MorganGenerator
+     … +49 lines (ctrl+o to expand)
+
+⏺ The multi-task model seems stuck. Let me kill it and proceed with a faster, simpler approach:
+
+⏺ Bash(pkill -f "multitask_model.py" 2>/dev/null; echo "Killed stuck process")
+  ⎿  Killed stuck process
+
+⏺ Write(src/ensemble_model.py)
+  ⎿  Wrote 381 lines to src/ensemble_model.py                
+      1 """
+      2 Ensemble Model for ADMET Prediction Challenge
+      3 Combines CatBoost and LightGBM for robust predictions
+      4 """
+      5 import pandas as pd
+      6 import numpy as np
+      7 from pathlib import Path
+      8 import warnings
+      9 warnings.filterwarnings('ignore')
+     … +371 lines (ctrl+o to expand)
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec timeout: 
+      2025_opeadmet-challenge/admet_challenge/bin/activate &&       10m 0s
+      python3 /Users/tp53/Documents/code_macbook-a…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/src/ensemble_model.py", line 22, in <module>
+         import lightgbm as lgb
+     ModuleNotFoundError: No module named 'lightgbm'
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec timeout: 
+      2025_opeadmet-challenge/admet_challenge/bin/activate && pip3  10m 0s
+      install lightgbm -q && python3 /Users/t…)
+  ⎿  Error: Exit code 1
+     error: externally-managed-environment
+
+     × This environment is externally managed
+     ╰─> To install Python packages system-wide, try brew install
+         xyz, where xyz is the package you are trying to
+         install.
+         
+         If you wish to install a Python library that isn't in Homebrew,
+         use a virtual environment:
+     … +27 lines (ctrl+o to see all)
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/admet_challenge/bin/activate &&
+      /Users/tp53/Documents/code_macbook-air-m1__t…)
+  ⎿  Tool use rejected with user message: Creating virtual environment at: 
+     admet_challenge
+     Activate with: source admet_challenge/bin/activate
+
+⏺ Bash(source admet_challenge/bin/activate && pip install lightgbm -q 2>&1 |
+      tail -5)
+  ⎿ Tool use rejected with user message: use uv pip install to be blazingly fast
+
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet
+      -challenge/admet_challenge/bin/activate && uv pip install lightgbm 2>&1)
+  ⎿  Using Python 3.12.4 environment at: admet_challenge
+     Resolved 3 packages in 615ms
+     Downloading lightgbm (1.5MiB)
+     … +4 lines (ctrl+o to expand)
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec timeout: 
+      2025_opeadmet-challenge/admet_challenge/bin/activate &&       10m 0s
+      python3 /Users/tp53/Documents/code_macbook-a…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/src/ensemble_model.py", line 22, in <module>
+         import lightgbm as lgb
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/admet_challenge/lib/python3.12/site-packages/lightgbm/__init__.py",
+      line 11, in <module>
+         from .basic import Booster, Dataset, Sequence, register_logger
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/admet_challenge/lib/python3.12/site-packages/lightgbm/basic.py", 
+     line 9, in <module>
+         from .libpath import _LIB  # isort: skip
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/admet_challenge/lib/python3.12/site-packages/lightgbm/libpath.py", 
+     line 49, in <module>
+
+
+     … +11 lines (ctrl+o to see all)
+
+⏺ LightGBM requires libomp. Let me use an alternative approach with just CatBoost and XGBoost ensemble:
+
+⏺ Read(src/ensemble_model.py)
+  ⎿  Read 381 lines
+
+⏺ Write(src/ensemble_model.py)
+  ⎿  Added 49 lines, removed 48 lines                                    
+      1  """
+      2  Ensemble Model for ADMET Prediction Challenge
+      3 -Combines CatBoost and LightGBM for robust predictions           
+      3 +Combines CatBoost and XGBoost for robust predictions            
+      4  """
+      5  import pandas as pd
+      6  import numpy as np
+     ...
+      19  from sklearn.metrics import mean_absolute_error
+      20  from scipy.stats import spearmanr
+      21  from catboost import CatBoostRegressor
+      22 -import lightgbm as lgb                                         
+      22 +from xgboost import XGBRegressor                               
+      23  import joblib
+      24  
+      25  # Define paths
+     ...
+      121  
+      122  
+      123  def train_ensemble(X, y_dict, n_folds=5):
+      124 -    """Train CatBoost + LightGBM ensemble with cross-validatio
+          -n"""                                                          
+      124 +    """Train CatBoost + XGBoost ensemble with cross-validation
+          +"""                                                           
+      125  
+      126      print("\n" + "="*70)
+      127 -    print("TRAINING CATBOOST + LIGHTGBM ENSEMBLE")            
+      127 +    print("TRAINING CATBOOST + XGBOOST ENSEMBLE")             
+      128      print("="*70)
+      129  
+      130      models = {}
+     ...
+      150          kf = KFold(n_splits=n_folds, shuffle=True, random_stat
+           e=42)
+      151  
+      152          oof_catboost = np.zeros(len(y_clean))
+      153 -        oof_lgb = np.zeros(len(y_clean))                      
+      153 +        oof_xgb = np.zeros(len(y_clean))                      
+      154  
+      155          catboost_models = []
+      156 -        lgb_models = []                                       
+      156 +        xgb_models = []                                       
+      157  
+      158          for fold, (train_idx, val_idx) in enumerate(kf.split(X
+           _clean)):
+      159              X_train, X_val = X_clean[train_idx], X_clean[val_i
+           dx]
+     ...
+      161  
+      162              print(f"  Fold {fold+1}/{n_folds}...")
+      163  
+      164 -            # CatBoost                                        
+      164 +            # CatBoost - tuned hyperparameters                
+      165              cat_model = CatBoostRegressor(
+      166 -                iterations=800,                               
+      166 +                iterations=1000,                              
+      167                  depth=8,
+      168                  learning_rate=0.03,
+      169                  subsample=0.8,
+     ...
+      178              oof_catboost[val_idx] = cat_model.predict(X_val)
+      179              catboost_models.append(cat_model)
+      180  
+      181 -            # LightGBM                                        
+      182 -            lgb_train = lgb.Dataset(X_train, y_train)         
+      183 -            lgb_val = lgb.Dataset(X_val, y_val, reference=lgb_
+          -train)                                                        
+      184 -                                                              
+      185 -            lgb_params = {                                    
+      186 -                'objective': 'regression',                    
+      187 -                'metric': 'mae',                              
+      188 -                'num_leaves': 64,                             
+      189 -                'max_depth': 8,                               
+      190 -                'learning_rate': 0.03,                        
+      191 -                'feature_fraction': 0.8,                      
+      192 -                'bagging_fraction': 0.8,                      
+      193 -                'bagging_freq': 5,                            
+      194 -                'lambda_l1': 0.1,                             
+      195 -                'lambda_l2': 1.0,                             
+      196 -                'min_child_samples': 20,                      
+      197 -                'seed': 42 + fold,                            
+      198 -                'verbosity': -1                               
+      199 -            }                                                 
+      200 -                                                              
+      201 -            lgb_model = lgb.train(                            
+      202 -                lgb_params,                                   
+      203 -                lgb_train,                                    
+      204 -                num_boost_round=800,                          
+      205 -                valid_sets=[lgb_val],                         
+      206 -                callbacks=[lgb.early_stopping(100, verbose=Fal
+          -se)]                                                          
+      181 +            # XGBoost - tuned hyperparameters                 
+      182 +            xgb_model = XGBRegressor(                         
+      183 +                n_estimators=1000,                            
+      184 +                max_depth=8,                                  
+      185 +                learning_rate=0.03,                           
+      186 +                subsample=0.8,                                
+      187 +                colsample_bytree=0.8,                         
+      188 +                reg_alpha=0.1,                                
+      189 +                reg_lambda=1.0,                               
+      190 +                min_child_weight=3,                           
+      191 +                random_state=42 + fold,                       
+      192 +                n_jobs=-1,                                    
+      193 +                early_stopping_rounds=100                     
+      194              )
+      208 -            oof_lgb[val_idx] = lgb_model.predict(X_val)       
+      209 -            lgb_models.append(lgb_model)                      
+      195 +            xgb_model.fit(X_train, y_train, eval_set=[(X_val, 
+          +y_val)], verbose=False)                                       
+      196 +            oof_xgb[val_idx] = xgb_model.predict(X_val)       
+      197 +            xgb_models.append(xgb_model)                      
+      198  
+      199          # Compute optimal ensemble weights using OOF predictio
+           ns
+      212 -        # Grid search for best weight                         
+      200          best_weight = 0.5
+      201          best_mae = float('inf')
+      202  
+      203          for w in np.arange(0.3, 0.8, 0.05):
+      217 -            oof_ensemble = w * oof_catboost + (1 - w) * oof_lg
+          -b                                                             
+      204 +            oof_ensemble = w * oof_catboost + (1 - w) * oof_xg
+          +b                                                             
+      205              mae = mean_absolute_error(y_clean, oof_ensemble)
+      206              if mae < best_mae:
+      207                  best_mae = mae
+      208                  best_weight = w
+      209  
+      210          # Final OOF predictions with best weight
+      224 -        oof_ensemble = best_weight * oof_catboost + (1 - best_
+          -weight) * oof_lgb                                             
+      211 +        oof_ensemble = best_weight * oof_catboost + (1 - best_
+          +weight) * oof_xgb                                             
+      212  
+      213          # Metrics
+      214          mae_cat = mean_absolute_error(y_clean, oof_catboost)
+      228 -        mae_lgb = mean_absolute_error(y_clean, oof_lgb)       
+      215 +        mae_xgb = mean_absolute_error(y_clean, oof_xgb)       
+      216          mae_ens = mean_absolute_error(y_clean, oof_ensemble)
+      217  
+      218          spearman_cat = spearmanr(y_clean, oof_catboost)[0]
+      232 -        spearman_lgb = spearmanr(y_clean, oof_lgb)[0]         
+      219 +        spearman_xgb = spearmanr(y_clean, oof_xgb)[0]         
+      220          spearman_ens = spearmanr(y_clean, oof_ensemble)[0]
+      221  
+      222          rae_ens = mae_ens / np.mean(np.abs(y_clean - np.mean(y
+           _clean)))
+      223  
+      224          print(f"\n  Results for {target}:")
+      225          print(f"    CatBoost  - MAE: {mae_cat:.4f}, Spearman: 
+           {spearman_cat:.4f}")
+      239 -        print(f"    LightGBM  - MAE: {mae_lgb:.4f}, Spearman: 
+          -{spearman_lgb:.4f}")                                          
+      226 +        print(f"    XGBoost   - MAE: {mae_xgb:.4f}, Spearman: 
+          +{spearman_xgb:.4f}")                                          
+      227          print(f"    Ensemble  - MAE: {mae_ens:.4f}, Spearman: 
+           {spearman_ens:.4f}, RAE: {rae_ens:.4f}")
+      228          print(f"    Best weight (CatBoost): {best_weight:.2f}"
+           )
+      229  
+     ...
+      236          }
+      237  
+      238          # Train final models on all data
+      239 +        print(f"  Training final models on all {len(y_clean)} 
+          +samples...")                                                  
+      240 +                                                              
+      241          final_cat = CatBoostRegressor(
+      253 -            iterations=800,                                   
+      242 +            iterations=1000,                                  
+      243              depth=8,
+      244              learning_rate=0.03,
+      245              subsample=0.8,
+     ...
+      250          )
+      251          final_cat.fit(X_clean, y_clean, verbose=False)
+      252  
+      264 -        lgb_full = lgb.Dataset(X_clean, y_clean)              
+      265 -        final_lgb = lgb.train(lgb_params, lgb_full, num_boost_
+          -round=800)                                                    
+      253 +        final_xgb = XGBRegressor(                             
+      254 +            n_estimators=1000,                                
+      255 +            max_depth=8,                                      
+      256 +            learning_rate=0.03,                               
+      257 +            subsample=0.8,                                    
+      258 +            colsample_bytree=0.8,                             
+      259 +            reg_alpha=0.1,                                    
+      260 +            reg_lambda=1.0,                                   
+      261 +            min_child_weight=3,                               
+      262 +            random_state=42,                                  
+      263 +            n_jobs=-1                                         
+      264 +        )                                                     
+      265 +        final_xgb.fit(X_clean, y_clean, verbose=False)        
+      266  
+      267          models[target] = {
+      268              'catboost': final_cat,
+      269 -            'lightgbm': final_lgb,                            
+      269 +            'xgboost': final_xgb,                             
+      270              'weight': best_weight
+      271          }
+      272  
+     ...
+      295  
+      296      for target, model_info in models.items():
+      297          cat_pred = model_info['catboost'].predict(X)
+      298 -        lgb_pred = model_info['lightgbm'].predict(X)          
+      298 +        xgb_pred = model_info['xgboost'].predict(X)           
+      299          weight = model_info['weight']
+      300  
+      301 -        ensemble_pred = weight * cat_pred + (1 - weight) * lgb
+          -_pred                                                         
+      301 +        ensemble_pred = weight * cat_pred + (1 - weight) * xgb
+          +_pred                                                         
+      302  
+      303          # Clip to valid ranges
+      304          min_val, max_val = VALID_RANGES[target]
+     ...
+      310  def main():
+      311      print("="*70)
+      312      print("ADMET ENSEMBLE PREDICTION MODEL")
+      313 +    print("CatBoost + XGBoost with Optimal Weighting")        
+      314      print("="*70)
+      315  
+      316      # Load data
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec timeout: 
+      2025_opeadmet-challenge/admet_challenge/bin/activate &&       10m 0s
+      python3 /Users/tp53/Documents/code_macbook-a…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/src/ensemble_model.py", line 22, in <module>
+         from xgboost import XGBRegressor
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/admet_challenge/lib/python3.12/site-packages/xgboost/__init__.py", 
+     line 6, in <module>
+         from . import tracker  # noqa
+         ^^^^^^^^^^^^^^^^^^^^^
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/admet_challenge/lib/python3.12/site-packages/xgboost/tracker.py", 
+     line 9, in <module>
+         from .core import _LIB, _check_call, _deprecate_positional_args, 
+     make_jcargs
+       File "/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-c
+     hallenge/admet_challenge/lib/python3.12/site-packages/xgboost/core.py", line
+      308, in <module>
+
+     … +16 lines (ctrl+o to see all)
+
+⏺ Both XGBoost and LightGBM need libomp. Let me use CatBoost ensemble with different configurations:
+
+⏺ Write(src/ensemble_model.py)
+  ⎿  Added 112 lines, removed 97 lines                                   
+      1  """
+      2  Ensemble Model for ADMET Prediction Challenge
+      3 -Combines CatBoost and XGBoost for robust predictions            
+      3 +Uses multiple CatBoost configurations with different hyperparame
+        +ters                                                            
+      4  """
+      5  import pandas as pd
+      6  import numpy as np
+     ...
+      16  
+      17  # ML
+      18  from sklearn.model_selection import KFold
+      19 +from sklearn.ensemble import RandomForestRegressor             
+      20  from sklearn.metrics import mean_absolute_error
+      21  from scipy.stats import spearmanr
+      22  from catboost import CatBoostRegressor
+      22 -from xgboost import XGBRegressor                               
+      23  import joblib
+      24  
+      25  # Define paths
+     ...
+      120      return np.array(features)
+      121  
+      122  
+      123 +# Different CatBoost configurations for ensemble diversity    
+      124 +CATBOOST_CONFIGS = [                                          
+      125 +    {                                                         
+      126 +        'name': 'deep',                                       
+      127 +        'params': {                                           
+      128 +            'iterations': 1000,                               
+      129 +            'depth': 10,                                      
+      130 +            'learning_rate': 0.02,                            
+      131 +            'subsample': 0.8,                                 
+      132 +            'colsample_bylevel': 0.8,                         
+      133 +            'l2_leaf_reg': 3.0,                               
+      134 +            'random_strength': 1.0,                           
+      135 +            'verbose': False,                                 
+      136 +            'early_stopping_rounds': 100                      
+      137 +        }                                                     
+      138 +    },                                                        
+      139 +    {                                                         
+      140 +        'name': 'shallow_fast',                               
+      141 +        'params': {                                           
+      142 +            'iterations': 1500,                               
+      143 +            'depth': 6,                                       
+      144 +            'learning_rate': 0.05,                            
+      145 +            'subsample': 0.7,                                 
+      146 +            'colsample_bylevel': 0.7,                         
+      147 +            'l2_leaf_reg': 1.0,                               
+      148 +            'random_strength': 0.5,                           
+      149 +            'verbose': False,                                 
+      150 +            'early_stopping_rounds': 100                      
+      151 +        }                                                     
+      152 +    },                                                        
+      153 +    {                                                         
+      154 +        'name': 'regularized',                                
+      155 +        'params': {                                           
+      156 +            'iterations': 1000,                               
+      157 +            'depth': 8,                                       
+      158 +            'learning_rate': 0.03,                            
+      159 +            'subsample': 0.9,                                 
+      160 +            'colsample_bylevel': 0.6,                         
+      161 +            'l2_leaf_reg': 10.0,                              
+      162 +            'random_strength': 2.0,                           
+      163 +            'verbose': False,                                 
+      164 +            'early_stopping_rounds': 100                      
+      165 +        }                                                     
+      166 +    }                                                         
+      167 +]                                                             
+      168 +                                                              
+      169 +                                                              
+      170  def train_ensemble(X, y_dict, n_folds=5):
+      124 -    """Train CatBoost + XGBoost ensemble with cross-validation
+          -"""                                                           
+      171 +    """Train CatBoost ensemble with different configurations""
+          +"                                                             
+      172  
+      173      print("\n" + "="*70)
+      127 -    print("TRAINING CATBOOST + XGBOOST ENSEMBLE")             
+      174 +    print("TRAINING MULTI-CONFIG CATBOOST ENSEMBLE")          
+      175      print("="*70)
+      176  
+      177      models = {}
+     ...
+      196  
+      197          kf = KFold(n_splits=n_folds, shuffle=True, random_stat
+           e=42)
+      198  
+      152 -        oof_catboost = np.zeros(len(y_clean))                 
+      153 -        oof_xgb = np.zeros(len(y_clean))                      
+      199 +        # Store OOF predictions for each config               
+      200 +        oof_preds = {cfg['name']: np.zeros(len(y_clean)) for c
+          +fg in CATBOOST_CONFIGS}                                       
+      201 +        final_models = {cfg['name']: [] for cfg in CATBOOST_CO
+          +NFIGS}                                                        
+      202  
+      155 -        catboost_models = []                                  
+      156 -        xgb_models = []                                       
+      157 -                                                              
+      203          for fold, (train_idx, val_idx) in enumerate(kf.split(X
+           _clean)):
+      204              X_train, X_val = X_clean[train_idx], X_clean[val_i
+           dx]
+      205              y_train, y_val = y_clean[train_idx], y_clean[val_i
+           dx]
+      206  
+      207              print(f"  Fold {fold+1}/{n_folds}...")
+      208  
+      164 -            # CatBoost - tuned hyperparameters                
+      165 -            cat_model = CatBoostRegressor(                    
+      166 -                iterations=1000,                              
+      167 -                depth=8,                                      
+      168 -                learning_rate=0.03,                           
+      169 -                subsample=0.8,                                
+      170 -                colsample_bylevel=0.8,                        
+      171 -                l2_leaf_reg=3.0,                              
+      172 -                random_strength=1.0,                          
+      173 -                verbose=False,                                
+      174 -                random_seed=42 + fold,                        
+      175 -                early_stopping_rounds=100                     
+      176 -            )                                                 
+      177 -            cat_model.fit(X_train, y_train, eval_set=(X_val, y
+          -_val), verbose=False)                                         
+      178 -            oof_catboost[val_idx] = cat_model.predict(X_val)  
+      179 -            catboost_models.append(cat_model)                 
+      209 +            for cfg in CATBOOST_CONFIGS:                      
+      210 +                params = cfg['params'].copy()                 
+      211 +                params['random_seed'] = 42 + fold             
+      212  
+      181 -            # XGBoost - tuned hyperparameters                 
+      182 -            xgb_model = XGBRegressor(                         
+      183 -                n_estimators=1000,                            
+      184 -                max_depth=8,                                  
+      185 -                learning_rate=0.03,                           
+      186 -                subsample=0.8,                                
+      187 -                colsample_bytree=0.8,                         
+      188 -                reg_alpha=0.1,                                
+      189 -                reg_lambda=1.0,                               
+      190 -                min_child_weight=3,                           
+      191 -                random_state=42 + fold,                       
+      192 -                n_jobs=-1,                                    
+      193 -                early_stopping_rounds=100                     
+      194 -            )                                                 
+      195 -            xgb_model.fit(X_train, y_train, eval_set=[(X_val, 
+          -y_val)], verbose=False)                                       
+      196 -            oof_xgb[val_idx] = xgb_model.predict(X_val)       
+      197 -            xgb_models.append(xgb_model)                      
+      213 +                model = CatBoostRegressor(**params)           
+      214 +                model.fit(X_train, y_train, eval_set=(X_val, y
+          +_val), verbose=False)                                         
+      215 +                oof_preds[cfg['name']][val_idx] = model.predic
+          +t(X_val)                                                      
+      216 +                final_models[cfg['name']].append(model)       
+      217  
+      199 -        # Compute optimal ensemble weights using OOF predictio
+          -ns                                                            
+      200 -        best_weight = 0.5                                     
+      218 +        # Find optimal weights for ensemble                   
+      219 +        print("\n  Finding optimal ensemble weights...")      
+      220 +                                                              
+      221 +        best_weights = None                                   
+      222          best_mae = float('inf')
+      223  
+      203 -        for w in np.arange(0.3, 0.8, 0.05):                   
+      204 -            oof_ensemble = w * oof_catboost + (1 - w) * oof_xg
+          -b                                                             
+      205 -            mae = mean_absolute_error(y_clean, oof_ensemble)  
+      206 -            if mae < best_mae:                                
+      207 -                best_mae = mae                                
+      208 -                best_weight = w                               
+      224 +        # Grid search over weight combinations                
+      225 +        for w1 in np.arange(0.2, 0.6, 0.1):                   
+      226 +            for w2 in np.arange(0.2, 0.6, 0.1):               
+      227 +                w3 = 1 - w1 - w2                              
+      228 +                if w3 < 0.1 or w3 > 0.6:                      
+      229 +                    continue                                  
+      230  
+      210 -        # Final OOF predictions with best weight              
+      211 -        oof_ensemble = best_weight * oof_catboost + (1 - best_
+          -weight) * oof_xgb                                             
+      231 +                weights = [w1, w2, w3]                        
+      232 +                oof_ensemble = np.zeros(len(y_clean))         
+      233 +                for i, cfg in enumerate(CATBOOST_CONFIGS):    
+      234 +                    oof_ensemble += weights[i] * oof_preds[cfg
+          +['name']]                                                     
+      235  
+      213 -        # Metrics                                             
+      214 -        mae_cat = mean_absolute_error(y_clean, oof_catboost)  
+      215 -        mae_xgb = mean_absolute_error(y_clean, oof_xgb)       
+      216 -        mae_ens = mean_absolute_error(y_clean, oof_ensemble)  
+      236 +                mae = mean_absolute_error(y_clean, oof_ensembl
+          +e)                                                            
+      237 +                if mae < best_mae:                            
+      238 +                    best_mae = mae                            
+      239 +                    best_weights = weights                    
+      240  
+      218 -        spearman_cat = spearmanr(y_clean, oof_catboost)[0]    
+      219 -        spearman_xgb = spearmanr(y_clean, oof_xgb)[0]         
+      220 -        spearman_ens = spearmanr(y_clean, oof_ensemble)[0]    
+      241 +        # Use equal weights if optimization fails             
+      242 +        if best_weights is None:                              
+      243 +            best_weights = [1/len(CATBOOST_CONFIGS)] * len(CAT
+          +BOOST_CONFIGS)                                                
+      244  
+      245 +        # Final ensemble prediction                           
+      246 +        oof_ensemble = np.zeros(len(y_clean))                 
+      247 +        for i, cfg in enumerate(CATBOOST_CONFIGS):            
+      248 +            oof_ensemble += best_weights[i] * oof_preds[cfg['n
+          +ame']]                                                        
+      249 +                                                              
+      250 +        # Compute metrics                                     
+      251 +        mae_ens = mean_absolute_error(y_clean, oof_ensemble)  
+      252 +        spearman_ens = spearmanr(y_clean, oof_ensemble)[0]    
+      253          rae_ens = mae_ens / np.mean(np.abs(y_clean - np.mean(y
+           _clean)))
+      254  
+      255          print(f"\n  Results for {target}:")
+      225 -        print(f"    CatBoost  - MAE: {mae_cat:.4f}, Spearman: 
+          -{spearman_cat:.4f}")                                          
+      226 -        print(f"    XGBoost   - MAE: {mae_xgb:.4f}, Spearman: 
+          -{spearman_xgb:.4f}")                                          
+      227 -        print(f"    Ensemble  - MAE: {mae_ens:.4f}, Spearman: 
+          -{spearman_ens:.4f}, RAE: {rae_ens:.4f}")                      
+      228 -        print(f"    Best weight (CatBoost): {best_weight:.2f}"
+          -)                                                             
+      256 +        for i, cfg in enumerate(CATBOOST_CONFIGS):            
+      257 +            mae = mean_absolute_error(y_clean, oof_preds[cfg['
+          +name']])                                                      
+      258 +            spear = spearmanr(y_clean, oof_preds[cfg['name']])
+          +[0]                                                           
+      259 +            print(f"    {cfg['name']:<15} - MAE: {mae:.4f}, Sp
+          +earman: {spear:.4f}, weight: {best_weights[i]:.2f}")          
+      260 +        print(f"    {'ENSEMBLE':<15} - MAE: {mae_ens:.4f}, Spe
+          +arman: {spearman_ens:.4f}, RAE: {rae_ens:.4f}")               
+      261  
+      262          cv_results[target] = {
+      263              'MAE': mae_ens,
+      264              'Spearman': spearman_ens,
+      265              'RAE': rae_ens,
+      266              'n_samples': len(y_clean),
+      235 -            'best_weight': best_weight                        
+      267 +            'weights': best_weights                           
+      268          }
+      269  
+      270          # Train final models on all data
+      239 -        print(f"  Training final models on all {len(y_clean)} 
+          -samples...")                                                  
+      271 +        print(f"\n  Training final models on all {len(y_clean)
+          +} samples...")                                                
+      272  
+      241 -        final_cat = CatBoostRegressor(                        
+      242 -            iterations=1000,                                  
+      243 -            depth=8,                                          
+      244 -            learning_rate=0.03,                               
+      245 -            subsample=0.8,                                    
+      246 -            colsample_bylevel=0.8,                            
+      247 -            l2_leaf_reg=3.0,                                  
+      248 -            verbose=False,                                    
+      249 -            random_seed=42                                    
+      250 -        )                                                     
+      251 -        final_cat.fit(X_clean, y_clean, verbose=False)        
+      273 +        trained_models = {}                                   
+      274 +        for cfg in CATBOOST_CONFIGS:                          
+      275 +            params = cfg['params'].copy()                     
+      276 +            params['random_seed'] = 42                        
+      277 +            params.pop('early_stopping_rounds', None)  # Remov
+          +e for final training                                          
+      278  
+      253 -        final_xgb = XGBRegressor(                             
+      254 -            n_estimators=1000,                                
+      255 -            max_depth=8,                                      
+      256 -            learning_rate=0.03,                               
+      257 -            subsample=0.8,                                    
+      258 -            colsample_bytree=0.8,                             
+      259 -            reg_alpha=0.1,                                    
+      260 -            reg_lambda=1.0,                                   
+      261 -            min_child_weight=3,                               
+      262 -            random_state=42,                                  
+      263 -            n_jobs=-1                                         
+      264 -        )                                                     
+      265 -        final_xgb.fit(X_clean, y_clean, verbose=False)        
+      279 +            model = CatBoostRegressor(**params)               
+      280 +            model.fit(X_clean, y_clean, verbose=False)        
+      281 +            trained_models[cfg['name']] = model               
+      282  
+      283          models[target] = {
+      268 -            'catboost': final_cat,                            
+      269 -            'xgboost': final_xgb,                             
+      270 -            'weight': best_weight                             
+      284 +            'models': trained_models,                         
+      285 +            'weights': best_weights                           
+      286          }
+      287  
+      288      # Print summary
+     ...
+      309      predictions = {}
+      310  
+      311      for target, model_info in models.items():
+      297 -        cat_pred = model_info['catboost'].predict(X)          
+      298 -        xgb_pred = model_info['xgboost'].predict(X)           
+      299 -        weight = model_info['weight']                         
+      312 +        ensemble_pred = np.zeros(len(X))                      
+      313  
+      301 -        ensemble_pred = weight * cat_pred + (1 - weight) * xgb
+          -_pred                                                         
+      314 +        for i, (name, model) in enumerate(model_info['models']
+          +.items()):                                                    
+      315 +            pred = model.predict(X)                           
+      316 +            ensemble_pred += model_info['weights'][i] * pred  
+      317  
+      318          # Clip to valid ranges
+      319          min_val, max_val = VALID_RANGES[target]
+     ...
+      325  def main():
+      326      print("="*70)
+      327      print("ADMET ENSEMBLE PREDICTION MODEL")
+      313 -    print("CatBoost + XGBoost with Optimal Weighting")        
+      328 +    print("Multi-Config CatBoost Ensemble")                   
+      329      print("="*70)
+      330  
+      331      # Load data
+
+⏺ Bash(source /Users/tp53/Documents/code_macbook-air-m1__tp53/26dec timeout: 
+      2025_opeadmet-challenge/admet_challenge/bin/activate &&       10m 0s
+      python3 /Users/tp53/Documents/code_macbook-a…)
+  ⎿  Running in the background (↓ to manage)
+
+⏺ Bash(tail -80 /tmp/claude/-Users-tp53-Documents-code-macbook-air-m1--tp53-26de
+      c2025-opeadmet-challenge/tasks/bea5ec2.output)
+  ⎿  [20:07:10] DEPRECATION WARNING: please use MorganGenerator
+     [20:07:10] DEPRECATION WARNING: please use MorganGenerator
+     [20:07:10] DEPRECATION WARNING: please use MorganGenerator
+     … +80 lines (ctrl+o to expand)
+
+⏺ Task Output bea5ec2
+  ⎿  ======================================================================
+     ADMET ENSEMBLE PREDICTION MODEL
+     Multi-Config CatBoost Ensemble
+     … +7727 lines (ctrl+o to expand)
+  ⎿  Context low · Run /compact to compact & continue
+
+> /compact "deeply compact but capture the essence and all the major highlights 
+and high level plan of our conversation" 
+  ⎿  Error: Error during compaction: Error: Conversation too long. Press esc twice to go up a few messages and try again.
+
+> preserve the high level plan and write it to a file using /export, so your
+ new incantation to cc, with no context, can resume from the expprted file 
+  ⎿  Context low · Run /compact to compact & continue
+
+> /doctor 
+  ⎿  Claude Code diagnostics dismissed
+
+> /context 
+  ⎿  
+      Context Usage
+     ⛁ ⛀ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   claude-opus-4-5-20251101 · 261k/200k tokens (131%)
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ 
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   ⛁ System prompt: 3.1k tokens (1.5%)
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   ⛁ System tools: 14.8k tokens (7.4%)
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   ⛁ Messages: 198.3k tokens (99.1%)
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁   ⛝ Autocompact buffer: 45.0k tokens (22.5%)
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ 
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ 
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ 
+     ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ ⛁ 
+     
+     Skills and slash commands · /skills
+     
+     
+
+> /status 
+  ⎿  Status dialog dismissed
+
+> forcing auto compaction 
+  ⎿  Context low · Run /compact to compact & continue
+
+⏺ Background command "Run multi-config CatBoost ensemble" failed with exit code
+ 137.
+
+> "Run multi-config CatBoost ensemble" failed with exit code 137. 
+  ⎿  Context low · Run /compact to compact & continue
+
+
+
