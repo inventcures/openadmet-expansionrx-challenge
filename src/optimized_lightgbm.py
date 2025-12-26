@@ -1,6 +1,5 @@
 """
-Simple CatBoost model - lightweight, memory-efficient
-Uses only Morgan fingerprints + key descriptors
+Optimized LightGBM model with tuned hyperparameters
 """
 import pandas as pd
 import numpy as np
@@ -10,11 +9,11 @@ import gc
 warnings.filterwarnings('ignore')
 
 from rdkit import Chem
-from rdkit.Chem import AllChem, Descriptors
+from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_absolute_error
 from scipy.stats import spearmanr
-from catboost import CatBoostRegressor
+import lightgbm as lgb
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -30,8 +29,21 @@ VALID_RANGES = {
     'MPPB': (0.0, 100.0), 'MBPB': (0.0, 100.0), 'MGMB': (0.0, 100.0)
 }
 
+# Endpoint-specific hyperparameters
+HYPERPARAMS = {
+    'LogD': {'num_leaves': 64, 'lr': 0.03, 'n_estimators': 1000},
+    'KSOL': {'num_leaves': 64, 'lr': 0.03, 'n_estimators': 800},
+    'HLM CLint': {'num_leaves': 48, 'lr': 0.05, 'n_estimators': 600},
+    'MLM CLint': {'num_leaves': 48, 'lr': 0.05, 'n_estimators': 600},
+    'Caco-2 Permeability Papp A>B': {'num_leaves': 48, 'lr': 0.04, 'n_estimators': 700},
+    'Caco-2 Permeability Efflux': {'num_leaves': 32, 'lr': 0.05, 'n_estimators': 500},
+    'MPPB': {'num_leaves': 64, 'lr': 0.03, 'n_estimators': 800},
+    'MBPB': {'num_leaves': 64, 'lr': 0.03, 'n_estimators': 800},
+    'MGMB': {'num_leaves': 32, 'lr': 0.05, 'n_estimators': 400},
+}
+
 def compute_features(smiles_list):
-    """Morgan FP (512 bits) + 10 descriptors = 522 features"""
+    """Morgan FP (1024 bits) + 15 descriptors"""
     print(f"Computing features for {len(smiles_list)} molecules...")
     features = []
     for i, smi in enumerate(smiles_list):
@@ -39,32 +51,36 @@ def compute_features(smiles_list):
             print(f"  {i+1}/{len(smiles_list)}")
         mol = Chem.MolFromSmiles(smi)
         if mol is None:
-            features.append(np.zeros(522))
+            features.append(np.zeros(1039))
             continue
         try:
-            fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=512)
+            fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=1024)
             desc = [
                 Descriptors.MolWt(mol), Descriptors.MolLogP(mol),
                 Descriptors.TPSA(mol), Descriptors.NumHDonors(mol),
                 Descriptors.NumHAcceptors(mol), Descriptors.NumRotatableBonds(mol),
                 Descriptors.NumAromaticRings(mol), Descriptors.FractionCSP3(mol),
-                Descriptors.HeavyAtomCount(mol), Descriptors.RingCount(mol)
+                Descriptors.HeavyAtomCount(mol), Descriptors.RingCount(mol),
+                rdMolDescriptors.CalcNumAliphaticRings(mol),
+                rdMolDescriptors.CalcNumHeterocycles(mol),
+                Descriptors.LabuteASA(mol),
+                Descriptors.qed(mol),
+                rdMolDescriptors.CalcNumAmideBonds(mol)
             ]
             features.append(np.concatenate([np.array(fp), desc]))
         except:
-            features.append(np.zeros(522))
+            features.append(np.zeros(1039))
     return np.array(features, dtype=np.float32)
 
 def main():
     print("="*60)
-    print("SIMPLE CATBOOST MODEL")
+    print("OPTIMIZED LIGHTGBM MODEL")
     print("="*60)
 
     train_df = pd.read_csv(BASE_DIR / "data/raw/train.csv")
     test_df = pd.read_csv(BASE_DIR / "data/raw/test_blinded.csv")
     print(f"Train: {len(train_df)}, Test: {len(test_df)}")
 
-    # Compute features
     all_smiles = pd.concat([train_df['SMILES'], test_df['SMILES']]).values
     X_all = compute_features(all_smiles)
     X_train, X_test = X_all[:len(train_df)], X_all[len(train_df):]
@@ -74,24 +90,32 @@ def main():
     results = {}
 
     for target in TARGETS:
-        print(f"\n{'='*40}\n{target}\n{'='*40}")
+        hp = HYPERPARAMS[target]
+        print(f"\n{'='*40}\n{target} (leaves={hp['num_leaves']}, lr={hp['lr']}, n={hp['n_estimators']})\n{'='*40}")
+
         y = train_df[target].values
         mask = ~np.isnan(y)
         X_t, y_t = X_train[mask], y[mask]
         print(f"Samples: {len(y_t)}")
 
-        # 5-fold CV
         kf = KFold(n_splits=5, shuffle=True, random_state=42)
         oof = np.zeros(len(y_t))
 
         for fold, (tr_idx, va_idx) in enumerate(kf.split(X_t)):
-            model = CatBoostRegressor(
-                iterations=500, depth=7, learning_rate=0.05,
-                subsample=0.8, verbose=False, random_seed=42+fold,
-                early_stopping_rounds=50
+            model = lgb.LGBMRegressor(
+                n_estimators=hp['n_estimators'],
+                num_leaves=hp['num_leaves'],
+                learning_rate=hp['lr'],
+                subsample=0.8,
+                colsample_bytree=0.8,
+                reg_lambda=3.0,
+                random_state=42+fold,
+                n_jobs=-1,
+                verbose=-1
             )
             model.fit(X_t[tr_idx], y_t[tr_idx],
-                     eval_set=(X_t[va_idx], y_t[va_idx]), verbose=False)
+                     eval_set=[(X_t[va_idx], y_t[va_idx])],
+                     callbacks=[lgb.early_stopping(100, verbose=False)])
             oof[va_idx] = model.predict(X_t[va_idx])
 
         mae = mean_absolute_error(y_t, oof)
@@ -100,19 +124,25 @@ def main():
         print(f"MAE={mae:.4f}, Spearman={spear:.4f}, RAE={rae:.4f}")
         results[target] = {'MAE': mae, 'Spearman': spear, 'RAE': rae}
 
-        # Final model
-        final = CatBoostRegressor(
-            iterations=500, depth=7, learning_rate=0.05,
-            subsample=0.8, verbose=False, random_seed=42
+        # Final model on all data
+        final = lgb.LGBMRegressor(
+            n_estimators=hp['n_estimators'],
+            num_leaves=hp['num_leaves'],
+            learning_rate=hp['lr'],
+            subsample=0.8,
+            colsample_bytree=0.8,
+            reg_lambda=3.0,
+            random_state=42,
+            n_jobs=-1,
+            verbose=-1
         )
-        final.fit(X_t, y_t, verbose=False)
+        final.fit(X_t, y_t)
 
         pred = final.predict(X_test)
         pred = np.clip(pred, *VALID_RANGES[target])
         predictions[target] = pred
         gc.collect()
 
-    # Summary
     print("\n" + "="*60)
     print("SUMMARY")
     print("="*60)
@@ -121,11 +151,10 @@ def main():
         print(f"{t}: RAE={r['RAE']:.4f}")
     print(f"\nMA-RAE: {np.mean(raes):.4f}")
 
-    # Save submission
     sub = pd.DataFrame({'Molecule Name': test_df['Molecule Name']})
     for t in TARGETS:
         sub[t] = predictions[t]
-    out_path = BASE_DIR / "submissions/simple_catboost.csv"
+    out_path = BASE_DIR / "submissions/optimized_lightgbm.csv"
     sub.to_csv(out_path, index=False)
     print(f"\nSaved: {out_path}")
 

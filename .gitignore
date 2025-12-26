@@ -26,3 +26,9 @@ catboost_info/
 
 # Session logs (optional)
 # 2025-*.txt
+
+# Checkpoints (local training state)
+.checkpoints/
+
+# Training logs
+logs/

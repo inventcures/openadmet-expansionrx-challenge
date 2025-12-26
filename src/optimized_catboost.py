@@ -15,7 +15,7 @@ from sklearn.metrics import mean_absolute_error
 from scipy.stats import spearmanr
 from catboost import CatBoostRegressor
 
-BASE_DIR = Path("/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-challenge")
+BASE_DIR = Path(__file__).parent.parent
 
 TARGETS = ['LogD', 'KSOL', 'HLM CLint', 'MLM CLint',
            'Caco-2 Permeability Papp A>B', 'Caco-2 Permeability Efflux',

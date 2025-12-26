@@ -24,7 +24,7 @@ from catboost import CatBoostRegressor
 import joblib
 
 # Paths
-BASE_DIR = Path("/Users/tp53/Documents/code_macbook-air-m1__tp53/26dec2025_opeadmet-challenge")
+BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data" / "raw"
 MODEL_DIR = BASE_DIR / "models"
 SUBMISSION_DIR = BASE_DIR / "submissions"
