@@ -67,6 +67,13 @@ except ImportError:
     CHEMBERTA_AVAILABLE = False
     print("ChemBERTa not available")
 
+# Uni-Mol 3D features
+try:
+    from src.unimol_features import compute_3d_features, UNIMOL_AVAILABLE
+except ImportError:
+    UNIMOL_AVAILABLE = False
+    print("Uni-Mol not available")
+
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, MACCSkeys
 
@@ -370,8 +377,8 @@ class GPUStackingEnsemble:
 # MAIN PIPELINE
 # ============================================================================
 
-def run_pipeline(mode='full', use_multitask=True, use_chemprop=True, use_chemberta=True):
-    """Run Phase 2B pipeline on RunPod with multi-task learning + Chemprop + ChemBERTa"""
+def run_pipeline(mode='full', use_multitask=True, use_chemprop=True, use_chemberta=True, use_unimol=True):
+    """Run Phase 2 full pipeline on RunPod RTX 4090"""
 
     print("=" * 60)
     print(f"PHASE 2B PIPELINE - RUNPOD RTX 4090 ({mode.upper()} MODE)")
@@ -415,6 +422,20 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True, use_chember
 
         if use_gpu:
             torch.cuda.empty_cache()
+        gc.collect()
+
+    # Add Uni-Mol 3D features if available
+    if use_unimol and UNIMOL_AVAILABLE and mode == 'full':
+        print("\n[2.6/4] Computing Uni-Mol 3D features...")
+        unimol_all = compute_3d_features(all_smiles.tolist(), use_unimol=True, batch_size=32)
+        unimol_train = unimol_all[:len(train_df)]
+        unimol_test = unimol_all[len(train_df):]
+
+        X_train = np.hstack([X_train, unimol_train])
+        X_test = np.hstack([X_test, unimol_test])
+        print(f"Features with Uni-Mol: {X_train.shape}")
+
+        torch.cuda.empty_cache()
         gc.collect()
 
     # Train models
@@ -557,29 +578,33 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True, use_chember
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Phase 2B RunPod Pipeline')
+    parser = argparse.ArgumentParser(description='Phase 2 Full Pipeline - RunPod RTX 4090')
     parser.add_argument('--mode', choices=['quick', 'full'], default='full',
-                       help='quick (~40 min) or full (~120 min)')
+                       help='quick (~45 min) or full (~150 min)')
     parser.add_argument('--no-multitask', action='store_true',
                        help='Disable multi-task neural network')
     parser.add_argument('--no-chemprop', action='store_true',
                        help='Disable Chemprop D-MPNN')
     parser.add_argument('--no-chemberta', action='store_true',
                        help='Disable ChemBERTa embeddings')
+    parser.add_argument('--no-unimol', action='store_true',
+                       help='Disable Uni-Mol 3D features')
     parser.add_argument('--gbdt-only', action='store_true',
-                       help='GBDT stacking only (fastest)')
+                       help='GBDT stacking only (fastest, ~20 min)')
     args = parser.parse_args()
 
     use_mt = not args.no_multitask and not args.gbdt_only
     use_cp = not args.no_chemprop and not args.gbdt_only
     use_cb = not args.no_chemberta and not args.gbdt_only
+    use_um = not args.no_unimol and not args.gbdt_only
 
     start = time.time()
     results, out_path = run_pipeline(
         args.mode,
         use_multitask=use_mt,
         use_chemprop=use_cp,
-        use_chemberta=use_cb
+        use_chemberta=use_cb,
+        use_unimol=use_um
     )
     elapsed = time.time() - start
 
