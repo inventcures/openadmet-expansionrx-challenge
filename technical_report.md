@@ -216,17 +216,31 @@ We developed production-ready training scripts with:
 ```
 openadmet-expansionrx-challenge/
 ├── src/
-│   ├── optimized_catboost.py
-│   ├── optimized_xgboost.py
-│   ├── optimized_lightgbm.py
-│   ├── catboost_rf_ensemble.py
-│   └── chemprop_model.py
-├── run_local_m3.py      # Apple Silicon orchestration
-├── run_runpod.py        # CUDA GPU orchestration
-├── create_ensemble.py   # Ensemble creation
-├── submissions/         # Output CSVs
-├── .checkpoints/        # Training state
-└── logs/               # Execution logs
+│   ├── optimized_catboost.py      # CatBoost with GPU
+│   ├── optimized_xgboost.py       # XGBoost with GPU
+│   ├── optimized_lightgbm.py      # LightGBM
+│   ├── catboost_rf_ensemble.py    # CatBoost + RF hybrid
+│   ├── chemprop_model.py          # Basic Chemprop
+│   │
+│   │   # Phase 2: Advanced Components
+│   ├── feature_engineering_v2.py  # MACCS + RDKit FP + Descriptors
+│   ├── stacking_ensemble.py       # Two-level stacking ensemble
+│   ├── validation.py              # 5x5 repeated CV
+│   ├── multitask_nn.py            # Multi-task neural network
+│   ├── chemprop_optimized.py      # Optimized Chemprop D-MPNN
+│   ├── chemberta_embeddings.py    # ChemBERTa (RTX 4090 optimized)
+│   ├── unimol_features.py         # Uni-Mol 3D features
+│   └── feature_selection.py       # Endpoint-specific selection
+│
+├── run_local_m3.py          # Apple Silicon orchestration
+├── run_runpod.py            # CUDA GPU orchestration
+├── run_phase2_runpod.py     # Phase 2 pipeline (hardened)
+├── create_ensemble.py       # Ensemble creation
+├── requirements.txt         # Full requirements
+├── requirements_runpod.txt  # RunPod RTX 4090 requirements
+├── submissions/             # Output CSVs
+├── .checkpoints/            # Training state
+└── logs/                    # Execution logs
 ```
 
 ### 3.3 Computational Requirements
@@ -239,10 +253,23 @@ openadmet-expansionrx-challenge/
 
 ### 3.4 Software Dependencies
 
+**Core (Required):**
 - **Chemistry:** RDKit ≥2023.9.1
 - **Gradient Boosting:** XGBoost ≥2.0.0, CatBoost ≥1.2.0, LightGBM ≥4.0.0
-- **Deep Learning:** PyTorch ≥2.0.0, Lightning ≥2.0.0, Chemprop ≥2.0.0
-- **Core:** scikit-learn ≥1.3.0, pandas ≥2.0.0, numpy ≥1.24.0
+- **Deep Learning:** PyTorch ≥2.0.0, Lightning ≥2.0.0
+- **Core:** scikit-learn ≥1.3.0, pandas ≥2.0.0, numpy ≥1.24.0, scipy ≥1.11.0
+- **Utilities:** tqdm ≥4.66.0, joblib ≥1.3.0
+
+**Phase 2 Advanced Features (Recommended):**
+- **Transformer Embeddings:** transformers ≥4.36.0, huggingface_hub ≥0.19.0
+- **Graph Neural Networks:** Chemprop ≥2.0.0
+- **Extended Descriptors:** mordred ≥1.2.0
+
+**Optional (Maximum Performance on RTX 4090):**
+- **Flash Attention 2:** flash-attn (2x faster transformers)
+- **3D Features:** unimol_tools (Uni-Mol 3D conformer embeddings)
+
+See `requirements.txt` and `requirements_runpod.txt` for complete package lists.
 
 ---
 

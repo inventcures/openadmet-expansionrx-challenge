@@ -290,13 +290,38 @@ src/
 
 ---
 
-## Next Steps
+## Implementation Status (Updated 27 Dec 2025)
 
-1. **Immediate**: Implement `feature_engineering_v2.py` with MACCS + Mordred
-2. **Then**: Build stacking ensemble framework
-3. **Then**: Add multi-task learning for endpoint groups
-4. **Then**: Optimize Chemprop with proper hyperparameter search
-5. **Finally**: Add 3D features if time permits
+### Completed Components
+
+| Component | File | Status |
+|-----------|------|--------|
+| Extended Features (MACCS + RDKit FP + Descriptors) | `src/feature_engineering_v2.py` | ✅ Done |
+| Stacking Ensemble (XGB + CatBoost + LGB + RF) | `src/stacking_ensemble.py` | ✅ Done |
+| 5x5 Repeated CV Validation | `src/validation.py` | ✅ Done |
+| Multi-task Neural Network | `src/multitask_nn.py` | ✅ Done |
+| Chemprop D-MPNN Optimized | `src/chemprop_optimized.py` | ✅ Done |
+| ChemBERTa Embeddings (RTX 4090 optimized) | `src/chemberta_embeddings.py` | ✅ Done |
+| Uni-Mol 3D Features | `src/unimol_features.py` | ✅ Done |
+| Feature Selection | `src/feature_selection.py` | ✅ Done |
+| Phase 2 Pipeline (Hardened) | `run_phase2_runpod.py` | ✅ Done |
+
+### RTX 4090 Optimizations
+
+- **ChemBERTa**: Flash Attention 2, BF16, torch.compile, batch size 256
+- **GBDT**: XGBoost `device='cuda'`, CatBoost `task_type='GPU'`
+- **Checkpointing**: Idempotent resume from any stage
+- **Logging**: Detailed timestamps, tqdm progress bars
+
+### Requirements
+
+See `requirements_runpod.txt` for full package list.
+
+**Quick Install (RunPod):**
+```bash
+uv pip install -r requirements_runpod.txt
+uv pip install flash-attn --no-build-isolation  # Optional, 2x faster
+```
 
 ---
 

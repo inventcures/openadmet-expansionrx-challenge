@@ -377,10 +377,29 @@ Following the Nested/Inductive approach:
 
 ### Essential Libraries
 ```bash
-pip install rdkit chemprop catboost xgboost scikit-learn
-pip install torch torch-geometric  # For GNNs
-pip install mapie  # Conformal prediction
+# Core (Required)
+pip install rdkit xgboost catboost lightgbm scikit-learn
+pip install torch pytorch-lightning
+pip install tqdm pandas numpy scipy
+
+# Phase 2: Advanced Features (Recommended)
+pip install transformers huggingface_hub  # ChemBERTa embeddings
+pip install chemprop                       # D-MPNN graph neural network
+pip install mordred                        # Extended descriptors
+
+# Optional: Maximum Performance on RTX 4090
+pip install flash-attn --no-build-isolation  # 2x faster transformers
+pip install unimol_tools                      # Uni-Mol 3D features
+
+# Optional: Uncertainty & Optimization
+pip install mapie   # Conformal prediction
 pip install optuna  # Hyperparameter optimization
+```
+
+### Quick Install (RunPod RTX 4090)
+```bash
+uv pip install -r requirements_runpod.txt
+uv pip install flash-attn --no-build-isolation  # Optional, 2x faster
 ```
 
 ### Recommended Tutorials
