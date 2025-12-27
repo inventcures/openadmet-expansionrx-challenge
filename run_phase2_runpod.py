@@ -41,7 +41,16 @@ from sklearn.model_selection import KFold
 from sklearn.linear_model import RidgeCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
+from sklearn.preprocessing import StandardScaler
 from scipy.stats import spearmanr
+
+# Multi-task neural network
+try:
+    from src.multitask_nn import MultiTaskTrainer, ENDPOINT_GROUPS
+    MULTITASK_AVAILABLE = True
+except ImportError:
+    MULTITASK_AVAILABLE = False
+    print("Multi-task NN not available")
 
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, MACCSkeys
@@ -203,11 +212,13 @@ def get_descriptors(mol):
 class GPUStackingEnsemble:
     """Stacking ensemble optimized for RTX 4090"""
 
-    def __init__(self, use_gpu=True, n_folds=5):
+    def __init__(self, use_gpu=True, n_folds=5, use_multitask=True):
         self.use_gpu = use_gpu
         self.n_folds = n_folds
+        self.use_multitask = use_multitask and MULTITASK_AVAILABLE
         self.base_models = {}
         self.meta_model = None
+        self.feature_scaler = StandardScaler()
 
     def _create_xgb(self, hp):
         """XGBoost with CUDA"""
@@ -344,11 +355,11 @@ class GPUStackingEnsemble:
 # MAIN PIPELINE
 # ============================================================================
 
-def run_pipeline(mode='full'):
-    """Run Phase 2A pipeline on RunPod"""
+def run_pipeline(mode='full', use_multitask=True):
+    """Run Phase 2B pipeline on RunPod with multi-task learning"""
 
     print("=" * 60)
-    print(f"PHASE 2A PIPELINE - RUNPOD RTX 4090 ({mode.upper()} MODE)")
+    print(f"PHASE 2B PIPELINE - RUNPOD RTX 4090 ({mode.upper()} MODE)")
     print("=" * 60)
 
     # Detect GPU
@@ -405,9 +416,39 @@ def run_pipeline(mode='full'):
             torch.cuda.empty_cache()
         gc.collect()
 
+    # Multi-task neural network (Phase 2B)
+    mt_predictions = None
+    if use_multitask and MULTITASK_AVAILABLE:
+        print("\n" + "=" * 60)
+        print("MULTI-TASK NEURAL NETWORK")
+        print("=" * 60)
+
+        y_dict = {t: train_df[t].values for t in TARGETS}
+        epochs = 50 if mode == 'quick' else 100
+
+        mt_trainer = MultiTaskTrainer(
+            input_dim=X_train.shape[1],
+            hidden_dim=512,
+            lr=1e-3,
+        )
+        mt_trainer.fit(X_train, y_dict, epochs=epochs, verbose=True)
+        mt_predictions = mt_trainer.predict(X_test)
+
+        # Blend with GBDT predictions (0.7 GBDT + 0.3 NN)
+        print("\nBlending GBDT + Multi-task NN (0.7 + 0.3)...")
+        for target in TARGETS:
+            gbdt_pred = predictions[target]
+            mt_pred = mt_predictions[target]
+            blended = 0.7 * gbdt_pred + 0.3 * mt_pred
+            predictions[target] = np.clip(blended, *VALID_RANGES[target])
+
+        if use_gpu:
+            torch.cuda.empty_cache()
+        gc.collect()
+
     # Summary
     print("\n" + "=" * 60)
-    print("SUMMARY")
+    print("SUMMARY" + (" (GBDT + Multi-task blend)" if mt_predictions else ""))
     print("=" * 60)
     raes = [r['RAE'] for r in results.values()]
     for t, r in results.items():
@@ -430,13 +471,15 @@ def run_pipeline(mode='full'):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Phase 2A RunPod Pipeline')
+    parser = argparse.ArgumentParser(description='Phase 2B RunPod Pipeline')
     parser.add_argument('--mode', choices=['quick', 'full'], default='full',
-                       help='quick (~15 min) or full (~45 min)')
+                       help='quick (~20 min) or full (~60 min)')
+    parser.add_argument('--no-multitask', action='store_true',
+                       help='Disable multi-task neural network')
     args = parser.parse_args()
 
     start = time.time()
-    results, out_path = run_pipeline(args.mode)
+    results, out_path = run_pipeline(args.mode, use_multitask=not args.no_multitask)
     elapsed = time.time() - start
 
     print(f"\nTotal time: {elapsed/60:.1f} minutes")
