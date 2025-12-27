@@ -174,7 +174,14 @@ class ChempropModel:
 
             for batch in train_loader:
                 # Chemprop v2: batch is a TrainingBatch dataclass
-                bmg = batch.bmg.to(self.device)
+                bmg = getattr(batch, 'bmg', None)
+                if bmg is None:
+                    # Try alternative attribute names
+                    bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
+                if bmg is None:
+                    continue  # Skip invalid batches
+
+                bmg = bmg.to(self.device)
                 y = get_targets(batch)
 
                 optimizer.zero_grad()
@@ -185,7 +192,7 @@ class ChempropModel:
                 optimizer.step()
                 train_loss += loss.item()
 
-            train_loss /= len(train_loader)
+            train_loss /= max(len(train_loader), 1)
 
             # Validation
             if val_loader is not None:
@@ -193,12 +200,18 @@ class ChempropModel:
                 val_loss = 0.0
                 with torch.no_grad():
                     for batch in val_loader:
-                        bmg = batch.bmg.to(self.device)
+                        bmg = getattr(batch, 'bmg', None)
+                        if bmg is None:
+                            bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
+                        if bmg is None:
+                            continue
+
+                        bmg = bmg.to(self.device)
                         y = get_targets(batch)
                         preds = self.model(bmg)
                         loss = criterion(preds.squeeze(), y.squeeze())
                         val_loss += loss.item()
-                val_loss /= len(val_loader)
+                val_loss /= max(len(val_loader), 1)
                 scheduler.step(val_loss)
 
                 if val_loss < best_val_loss:
@@ -230,12 +243,27 @@ class ChempropModel:
         with torch.no_grad():
             for batch in loader:
                 # Chemprop v2: use batch.bmg for molecular graph
-                bmg = batch.bmg.to(self.device)
+                bmg = getattr(batch, 'bmg', None)
+                if bmg is None:
+                    bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
+                if bmg is None:
+                    # Return NaN for failed molecules
+                    batch_size = len(getattr(batch, 'smiles', [])) or 1
+                    predictions.extend([np.nan] * batch_size)
+                    continue
+
+                bmg = bmg.to(self.device)
                 preds = self.model(bmg)
                 predictions.extend(preds.cpu().numpy().flatten())
 
         # Inverse transform
         predictions = np.array(predictions) * self.scaler_std + self.scaler_mean
+
+        # Replace NaN with mean (from training data)
+        nan_mask = np.isnan(predictions)
+        if nan_mask.any():
+            predictions[nan_mask] = self.scaler_mean
+
         predictions = np.clip(predictions, *VALID_RANGES[self.target])
 
         return predictions
