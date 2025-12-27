@@ -817,8 +817,9 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
                 ckpt.mark_stage_complete('chemprop_training')
             except Exception as e:
                 logger.error(f"Chemprop failed: {e}")
-                logger.error("Chemprop is required. Fix the error or use --no-chemprop to skip.")
-                raise RuntimeError(f"Chemprop training failed: {e}") from e
+                logger.warning("Continuing without Chemprop predictions (blending will use GBDT + Multi-task only)")
+                cp_predictions = None
+                ckpt.mark_stage_complete('chemprop_training')
         else:
             logger.info("\n[7/7] Loaded cached Chemprop predictions")
     else:
