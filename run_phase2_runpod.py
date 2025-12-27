@@ -748,9 +748,9 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
                 ckpt.save_predictions('chemprop', cp_predictions)
                 ckpt.mark_stage_complete('chemprop_training')
             except Exception as e:
-                logger.warning(f"Chemprop failed: {e}. Skipping...")
-                cp_predictions = None
-                ckpt.mark_stage_complete('chemprop_training')
+                logger.error(f"Chemprop failed: {e}")
+                logger.error("Chemprop is required. Fix the error or use --no-chemprop to skip.")
+                raise RuntimeError(f"Chemprop training failed: {e}") from e
         else:
             logger.info("\n[7/7] Loaded cached Chemprop predictions")
     else:

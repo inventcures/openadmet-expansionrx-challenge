@@ -161,10 +161,14 @@ class ChempropModel:
             train_loss = 0.0
 
             for batch in train_loader:
-                batch = batch.to(self.device)
+                # Chemprop v2: batch is a TrainingBatch dataclass, not a tensor
+                # Move components to device individually
+                bmg = batch.bmg
+                y = batch.y.to(self.device) if hasattr(batch.y, 'to') else torch.tensor(batch.y, device=self.device)
+
                 optimizer.zero_grad()
-                preds = self.model(batch)
-                loss = criterion(preds.squeeze(), batch.y.squeeze())
+                preds = self.model(bmg)
+                loss = criterion(preds.squeeze(), y.squeeze())
                 loss.backward()
                 tnn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
@@ -178,9 +182,10 @@ class ChempropModel:
                 val_loss = 0.0
                 with torch.no_grad():
                     for batch in val_loader:
-                        batch = batch.to(self.device)
-                        preds = self.model(batch)
-                        loss = criterion(preds.squeeze(), batch.y.squeeze())
+                        bmg = batch.bmg
+                        y = batch.y.to(self.device) if hasattr(batch.y, 'to') else torch.tensor(batch.y, device=self.device)
+                        preds = self.model(bmg)
+                        loss = criterion(preds.squeeze(), y.squeeze())
                         val_loss += loss.item()
                 val_loss /= len(val_loader)
                 scheduler.step(val_loss)
@@ -213,8 +218,9 @@ class ChempropModel:
         predictions = []
         with torch.no_grad():
             for batch in loader:
-                batch = batch.to(self.device)
-                preds = self.model(batch)
+                # Chemprop v2: use batch.bmg for molecular graph
+                bmg = batch.bmg
+                preds = self.model(bmg)
                 predictions.extend(preds.cpu().numpy().flatten())
 
         # Inverse transform
