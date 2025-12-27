@@ -4,9 +4,9 @@ Phase 2B: Optimized Chemprop D-MPNN
 Hyperparameter-tuned message passing neural network for molecular property prediction.
 Trains ensemble of models with different seeds for robust predictions.
 
-Version: 2.2 (fixed data preparation - numpy to Python float)
+Version: 2.3 (fixed bmg.to() - in-place, doesn't return self)
 """
-_CHEMPROP_OPT_VERSION = "2.2"
+_CHEMPROP_OPT_VERSION = "2.3"
 import os
 import sys
 import numpy as np
@@ -184,7 +184,8 @@ class ChempropModel:
             n_batches = 0
             for batch in train_loader:
                 try:
-                    bmg = batch.bmg.to(self.device)
+                    bmg = batch.bmg
+                    bmg.to(self.device)  # In-place move, doesn't return self
                     y = get_targets(batch)
 
                     optimizer.zero_grad()
@@ -214,7 +215,8 @@ class ChempropModel:
                 with torch.no_grad():
                     for batch in val_loader:
                         try:
-                            bmg = batch.bmg.to(self.device)
+                            bmg = batch.bmg
+                            bmg.to(self.device)  # In-place
                             y = get_targets(batch)
                             preds = self.model(bmg)
                             loss = criterion(preds.squeeze(), y.squeeze())
@@ -254,7 +256,8 @@ class ChempropModel:
         with torch.no_grad():
             for batch in loader:
                 try:
-                    bmg = batch.bmg.to(self.device)
+                    bmg = batch.bmg
+                    bmg.to(self.device)  # In-place
                     preds = self.model(bmg)
                     predictions.extend(preds.cpu().numpy().flatten())
                 except Exception:
