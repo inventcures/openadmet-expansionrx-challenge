@@ -66,10 +66,12 @@ except ImportError:
     CHEMPROP_AVAILABLE = False
 
 try:
+    from transformers import AutoTokenizer, AutoModel
     from src.chemberta_embeddings import ChemBERTaEmbedder
     CHEMBERTA_AVAILABLE = True
 except ImportError:
     CHEMBERTA_AVAILABLE = False
+    ChemBERTaEmbedder = None
 
 try:
     from src.unimol_features import compute_3d_features, UNIMOL_AVAILABLE
@@ -587,26 +589,36 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
     # ========================================================================
     # STAGE 3: ChemBERTa Embeddings
     # ========================================================================
-    if use_chemberta and CHEMBERTA_AVAILABLE:
+    if use_chemberta and CHEMBERTA_AVAILABLE and ChemBERTaEmbedder is not None:
         if not ckpt.is_stage_complete('features_chemberta'):
             logger.info("\n[3/7] Computing ChemBERTa embeddings...")
-            embedder = ChemBERTaEmbedder()
-            embedder.load_model()
+            try:
+                embedder = ChemBERTaEmbedder()
+                embedder.load_model()
 
-            chemberta_all = embedder.embed_batch(
-                all_smiles.tolist(), batch_size=32, show_progress=True
-            )
-            ckpt.save_array('chemberta_all', chemberta_all)
-            ckpt.mark_stage_complete('features_chemberta')
-            clear_gpu_memory()
+                chemberta_all = embedder.embed_batch(
+                    all_smiles.tolist(), batch_size=32, show_progress=True
+                )
+                ckpt.save_array('chemberta_all', chemberta_all)
+                ckpt.mark_stage_complete('features_chemberta')
+                clear_gpu_memory()
+
+                X_train = np.hstack([X_train, chemberta_all[:n_train]])
+                X_test = np.hstack([X_test, chemberta_all[n_train:]])
+                logger.info(f"With ChemBERTa: {X_train.shape}")
+            except Exception as e:
+                logger.warning(f"ChemBERTa failed: {e}. Skipping...")
+                ckpt.mark_stage_complete('features_chemberta')
         else:
             logger.info("\n[3/7] Loading cached ChemBERTa embeddings...")
             chemberta_all = ckpt.load_array('chemberta_all')
-
-        X_train = np.hstack([X_train, chemberta_all[:n_train]])
-        X_test = np.hstack([X_test, chemberta_all[n_train:]])
-        logger.info(f"With ChemBERTa: {X_train.shape}")
+            if chemberta_all is not None:
+                X_train = np.hstack([X_train, chemberta_all[:n_train]])
+                X_test = np.hstack([X_test, chemberta_all[n_train:]])
+                logger.info(f"With ChemBERTa: {X_train.shape}")
     else:
+        if use_chemberta:
+            logger.info("\n[3/7] ChemBERTa not available (install: pip install transformers). Skipping...")
         ckpt.mark_stage_complete('features_chemberta')
 
     # ========================================================================
@@ -615,18 +627,28 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
     if use_unimol and UNIMOL_AVAILABLE and mode == 'full':
         if not ckpt.is_stage_complete('features_unimol'):
             logger.info("\n[4/7] Computing Uni-Mol 3D features...")
-            unimol_all = compute_3d_features(all_smiles.tolist(), use_unimol=True)
-            ckpt.save_array('unimol_all', unimol_all)
-            ckpt.mark_stage_complete('features_unimol')
-            clear_gpu_memory()
+            try:
+                unimol_all = compute_3d_features(all_smiles.tolist(), use_unimol=True)
+                ckpt.save_array('unimol_all', unimol_all)
+                ckpt.mark_stage_complete('features_unimol')
+                clear_gpu_memory()
+
+                X_train = np.hstack([X_train, unimol_all[:n_train]])
+                X_test = np.hstack([X_test, unimol_all[n_train:]])
+                logger.info(f"With Uni-Mol: {X_train.shape}")
+            except Exception as e:
+                logger.warning(f"Uni-Mol failed: {e}. Skipping...")
+                ckpt.mark_stage_complete('features_unimol')
         else:
             logger.info("\n[4/7] Loading cached Uni-Mol features...")
             unimol_all = ckpt.load_array('unimol_all')
-
-        X_train = np.hstack([X_train, unimol_all[:n_train]])
-        X_test = np.hstack([X_test, unimol_all[n_train:]])
-        logger.info(f"With Uni-Mol: {X_train.shape}")
+            if unimol_all is not None:
+                X_train = np.hstack([X_train, unimol_all[:n_train]])
+                X_test = np.hstack([X_test, unimol_all[n_train:]])
+                logger.info(f"With Uni-Mol: {X_train.shape}")
     else:
+        if use_unimol and mode == 'full':
+            logger.info("\n[4/7] Uni-Mol not available (install: pip install unimol_tools). Skipping...")
         ckpt.mark_stage_complete('features_unimol')
 
     # ========================================================================
@@ -706,28 +728,34 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
 
         if not ckpt.is_stage_complete('chemprop_training') or cp_predictions is None:
             logger.info("\n[7/7] Training Chemprop D-MPNN...")
+            try:
+                train_smiles = train_df['SMILES'].tolist()
+                test_smiles = test_df['SMILES'].tolist()
+                n_models = 2 if mode == 'quick' else 3
 
-            train_smiles = train_df['SMILES'].tolist()
-            test_smiles = test_df['SMILES'].tolist()
-            n_models = 2 if mode == 'quick' else 3
+                cp_predictions = {}
+                for target in tqdm(TARGETS, desc="Chemprop", unit="target", ncols=80):
+                    y = train_df[target].values
+                    mask = ~np.isnan(y)
+                    valid_smiles = [train_smiles[i] for i, m in enumerate(mask) if m]
+                    valid_y = y[mask]
 
-            cp_predictions = {}
-            for target in tqdm(TARGETS, desc="Chemprop", unit="target", ncols=80):
-                y = train_df[target].values
-                mask = ~np.isnan(y)
-                valid_smiles = [train_smiles[i] for i, m in enumerate(mask) if m]
-                valid_y = y[mask]
+                    ensemble = ChempropEnsemble(target, n_models=n_models)
+                    ensemble.fit(valid_smiles, valid_y, verbose=False)
+                    cp_predictions[target] = ensemble.predict(test_smiles)
+                    clear_gpu_memory()
 
-                ensemble = ChempropEnsemble(target, n_models=n_models)
-                ensemble.fit(valid_smiles, valid_y, verbose=False)
-                cp_predictions[target] = ensemble.predict(test_smiles)
-                clear_gpu_memory()
-
-            ckpt.save_predictions('chemprop', cp_predictions)
-            ckpt.mark_stage_complete('chemprop_training')
+                ckpt.save_predictions('chemprop', cp_predictions)
+                ckpt.mark_stage_complete('chemprop_training')
+            except Exception as e:
+                logger.warning(f"Chemprop failed: {e}. Skipping...")
+                cp_predictions = None
+                ckpt.mark_stage_complete('chemprop_training')
         else:
             logger.info("\n[7/7] Loaded cached Chemprop predictions")
     else:
+        if use_chemprop:
+            logger.info("\n[7/7] Chemprop not available (install: pip install chemprop). Skipping...")
         ckpt.mark_stage_complete('chemprop_training')
 
     # ========================================================================
