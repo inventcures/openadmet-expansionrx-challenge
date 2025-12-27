@@ -437,6 +437,7 @@ def train_catboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
                 iterations=config['iterations'],
                 depth=8,  # Deeper on GPU
                 learning_rate=0.03,
+                bootstrap_type='Bernoulli' if use_gpu else 'Bayesian',  # Bernoulli supports subsample
                 subsample=0.8,
                 colsample_bylevel=0.8,
                 l2_leaf_reg=3.0,
