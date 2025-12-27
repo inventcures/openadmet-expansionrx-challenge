@@ -3,7 +3,10 @@ Phase 2B: Optimized Chemprop D-MPNN
 
 Hyperparameter-tuned message passing neural network for molecular property prediction.
 Trains ensemble of models with different seeds for robust predictions.
+
+Version: 2.1 (robust batch handling)
 """
+_CHEMPROP_OPT_VERSION = "2.1"
 import os
 import sys
 import numpy as np
@@ -24,7 +27,7 @@ try:
     # Log version and API info for debugging
     _chemprop_version = getattr(chemprop, '__version__', 'unknown')
     _has_from_smi = hasattr(MoleculeDatapoint, 'from_smi')
-    print(f"Chemprop v{_chemprop_version} loaded (from_smi: {_has_from_smi})")
+    print(f"chemprop_optimized v{_CHEMPROP_OPT_VERSION} | Chemprop v{_chemprop_version} | from_smi: {_has_from_smi}")
 except ImportError:
     CHEMPROP_AVAILABLE = False
     print("Chemprop not available - install with: pip install chemprop")
@@ -191,54 +194,76 @@ class ChempropModel:
             self.model.train()
             train_loss = 0.0
 
+            n_batches = 0
             for batch in train_loader:
-                # Chemprop v2: batch is a TrainingBatch dataclass
-                bmg = getattr(batch, 'bmg', None)
-                if bmg is None:
-                    # Try alternative attribute names
-                    bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
-                if bmg is None:
-                    continue  # Skip invalid batches
+                try:
+                    # Chemprop v2: batch is a TrainingBatch dataclass
+                    bmg = getattr(batch, 'bmg', None)
+                    if bmg is None:
+                        # Try alternative attribute names
+                        bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
+                    if bmg is None:
+                        continue  # Skip invalid batches
 
-                # Validate BatchMolGraph has required tensors
-                if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
-                    continue  # Skip malformed batch
+                    # Validate BatchMolGraph has required tensors
+                    if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
+                        continue  # Skip malformed batch
 
-                bmg = bmg.to(self.device)
-                y = get_targets(batch)
+                    bmg = bmg.to(self.device)
 
-                optimizer.zero_grad()
-                preds = self.model(bmg)
-                loss = criterion(preds.squeeze(), y.squeeze())
-                loss.backward()
-                tnn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                optimizer.step()
-                train_loss += loss.item()
+                    # Re-check after device transfer
+                    if getattr(bmg, 'V', None) is None:
+                        continue
 
-            train_loss /= max(len(train_loader), 1)
+                    y = get_targets(batch)
+
+                    optimizer.zero_grad()
+                    preds = self.model(bmg)
+                    loss = criterion(preds.squeeze(), y.squeeze())
+                    loss.backward()
+                    tnn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    optimizer.step()
+                    train_loss += loss.item()
+                    n_batches += 1
+                except Exception as e:
+                    # Skip problematic batches
+                    continue
+
+            if n_batches == 0:
+                raise RuntimeError("No valid batches found - check SMILES validity")
+
+            train_loss /= max(n_batches, 1)
 
             # Validation
             if val_loader is not None:
                 self.model.eval()
                 val_loss = 0.0
+                n_val_batches = 0
                 with torch.no_grad():
                     for batch in val_loader:
-                        bmg = getattr(batch, 'bmg', None)
-                        if bmg is None:
-                            bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
-                        if bmg is None:
-                            continue
+                        try:
+                            bmg = getattr(batch, 'bmg', None)
+                            if bmg is None:
+                                bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
+                            if bmg is None:
+                                continue
 
-                        # Validate BatchMolGraph has required tensors
-                        if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
-                            continue
+                            # Validate BatchMolGraph has required tensors
+                            if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
+                                continue
 
-                        bmg = bmg.to(self.device)
-                        y = get_targets(batch)
-                        preds = self.model(bmg)
-                        loss = criterion(preds.squeeze(), y.squeeze())
-                        val_loss += loss.item()
-                val_loss /= max(len(val_loader), 1)
+                            bmg = bmg.to(self.device)
+                            if getattr(bmg, 'V', None) is None:
+                                continue
+
+                            y = get_targets(batch)
+                            preds = self.model(bmg)
+                            loss = criterion(preds.squeeze(), y.squeeze())
+                            val_loss += loss.item()
+                            n_val_batches += 1
+                        except Exception:
+                            continue
+                val_loss /= max(n_val_batches, 1)
                 scheduler.step(val_loss)
 
                 if val_loss < best_val_loss:
@@ -269,21 +294,30 @@ class ChempropModel:
         predictions = []
         with torch.no_grad():
             for batch in loader:
-                # Chemprop v2: use batch.bmg for molecular graph
-                bmg = getattr(batch, 'bmg', None)
-                if bmg is None:
-                    bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
+                try:
+                    # Chemprop v2: use batch.bmg for molecular graph
+                    bmg = getattr(batch, 'bmg', None)
+                    if bmg is None:
+                        bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
 
-                # Check if batch is valid
-                if bmg is None or getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
-                    # Return NaN for failed molecules
+                    # Check if batch is valid
+                    if bmg is None or getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
+                        # Return NaN for failed molecules
+                        batch_size = len(getattr(batch, 'smiles', [])) or 1
+                        predictions.extend([np.nan] * batch_size)
+                        continue
+
+                    bmg = bmg.to(self.device)
+                    if getattr(bmg, 'V', None) is None:
+                        batch_size = len(getattr(batch, 'smiles', [])) or 1
+                        predictions.extend([np.nan] * batch_size)
+                        continue
+
+                    preds = self.model(bmg)
+                    predictions.extend(preds.cpu().numpy().flatten())
+                except Exception:
                     batch_size = len(getattr(batch, 'smiles', [])) or 1
                     predictions.extend([np.nan] * batch_size)
-                    continue
-
-                bmg = bmg.to(self.device)
-                preds = self.model(bmg)
-                predictions.extend(preds.cpu().numpy().flatten())
 
         # Inverse transform
         predictions = np.array(predictions) * self.scaler_std + self.scaler_mean
