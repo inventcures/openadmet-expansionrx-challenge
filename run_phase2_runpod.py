@@ -60,6 +60,13 @@ except ImportError:
     CHEMPROP_AVAILABLE = False
     print("Chemprop not available")
 
+# ChemBERTa embeddings
+try:
+    from src.chemberta_embeddings import ChemBERTaEmbedder, CHEMBERTA_AVAILABLE
+except ImportError:
+    CHEMBERTA_AVAILABLE = False
+    print("ChemBERTa not available")
+
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, MACCSkeys
 
@@ -363,8 +370,8 @@ class GPUStackingEnsemble:
 # MAIN PIPELINE
 # ============================================================================
 
-def run_pipeline(mode='full', use_multitask=True, use_chemprop=True):
-    """Run Phase 2B pipeline on RunPod with multi-task learning + Chemprop"""
+def run_pipeline(mode='full', use_multitask=True, use_chemprop=True, use_chemberta=True):
+    """Run Phase 2B pipeline on RunPod with multi-task learning + Chemprop + ChemBERTa"""
 
     print("=" * 60)
     print(f"PHASE 2B PIPELINE - RUNPOD RTX 4090 ({mode.upper()} MODE)")
@@ -390,6 +397,25 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True):
 
     X_train = X_all[:len(train_df)]
     X_test = X_all[len(train_df):]
+
+    # Add ChemBERTa embeddings if available
+    if use_chemberta and CHEMBERTA_AVAILABLE:
+        print("\n[2.5/4] Computing ChemBERTa embeddings...")
+        embedder = ChemBERTaEmbedder()
+        embedder.load_model()
+
+        chemberta_all = embedder.embed_batch(all_smiles.tolist(), batch_size=32)
+        chemberta_train = chemberta_all[:len(train_df)]
+        chemberta_test = chemberta_all[len(train_df):]
+
+        # Concatenate with fingerprint features
+        X_train = np.hstack([X_train, chemberta_train])
+        X_test = np.hstack([X_test, chemberta_test])
+        print(f"Features with ChemBERTa: {X_train.shape}")
+
+        if use_gpu:
+            torch.cuda.empty_cache()
+        gc.collect()
 
     # Train models
     print("\n[3/4] Training stacking ensembles...")
@@ -533,20 +559,28 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Phase 2B RunPod Pipeline')
     parser.add_argument('--mode', choices=['quick', 'full'], default='full',
-                       help='quick (~30 min) or full (~90 min)')
+                       help='quick (~40 min) or full (~120 min)')
     parser.add_argument('--no-multitask', action='store_true',
                        help='Disable multi-task neural network')
     parser.add_argument('--no-chemprop', action='store_true',
                        help='Disable Chemprop D-MPNN')
+    parser.add_argument('--no-chemberta', action='store_true',
+                       help='Disable ChemBERTa embeddings')
     parser.add_argument('--gbdt-only', action='store_true',
                        help='GBDT stacking only (fastest)')
     args = parser.parse_args()
 
     use_mt = not args.no_multitask and not args.gbdt_only
     use_cp = not args.no_chemprop and not args.gbdt_only
+    use_cb = not args.no_chemberta and not args.gbdt_only
 
     start = time.time()
-    results, out_path = run_pipeline(args.mode, use_multitask=use_mt, use_chemprop=use_cp)
+    results, out_path = run_pipeline(
+        args.mode,
+        use_multitask=use_mt,
+        use_chemprop=use_cp,
+        use_chemberta=use_cb
+    )
     elapsed = time.time() - start
 
     print(f"\nTotal time: {elapsed/60:.1f} minutes")
