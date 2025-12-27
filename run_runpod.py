@@ -14,8 +14,9 @@ RTX 4090 Optimizations:
     - cuDNN benchmark mode for fastest kernels
     - Mixed precision (FP16/BF16) where supported
     - Optimized batch sizes for 24GB VRAM
-    - gpu_hist with max_bin=256 for XGBoost
-    - CUDA-native LightGBM
+    - XGBoost 2.0+ with device='cuda' and tree_method='hist'
+    - CatBoost with task_type='GPU'
+    - LightGBM CPU (GPU requires special build)
 """
 
 import warnings
@@ -27,7 +28,7 @@ os.environ['RDKit_DEPRECATION_WARNINGS'] = '0'
 
 # CUDA optimizations - set before importing torch
 os.environ['CUDA_LAUNCH_BLOCKING'] = '0'  # Async CUDA ops
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'  # Better memory management
+os.environ['PYTORCH_ALLOC_CONF'] = 'max_split_size_mb:512'  # Better memory management (new name)
 
 import sys
 import argparse
@@ -538,21 +539,17 @@ def train_xgboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
                       checkpoint_manager: CheckpointManager,
                       interrupt_handler: GracefulInterrupt,
                       logger: logging.Logger, gpu_info: dict) -> Dict:
-    """Train XGBoost with RTX 4090 GPU optimizations"""
+    """Train XGBoost with RTX 4090 GPU optimizations (XGBoost 2.0+ API)"""
     from sklearn.model_selection import KFold
     from xgboost import XGBRegressor
 
     use_gpu = gpu_info['cuda_available']
     iters = config['xgboost_iters']
 
-    if use_gpu:
-        tree_method = 'gpu_hist'
-        device = 'cuda'
-    else:
-        tree_method = 'hist'
-        device = 'cpu'
+    # XGBoost 2.0+ API: use device='cuda' instead of tree_method='gpu_hist'
+    device = 'cuda' if use_gpu else 'cpu'
 
-    logger.info(f"Training XGBOOST ({tree_method}, iterations={iters})")
+    logger.info(f"Training XGBOOST (device={device}, iterations={iters})")
 
     if 'xgboost' not in checkpoint.predictions:
         checkpoint.predictions['xgboost'] = {}
@@ -589,7 +586,7 @@ def train_xgboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
             if interrupt_handler.check():
                 break
 
-            # RTX 4090 optimized XGBoost params
+            # XGBoost 2.0+ API: device='cuda' for GPU, tree_method='hist' is default
             model = XGBRegressor(
                 n_estimators=iters,
                 max_depth=10 if use_gpu else 8,  # Deeper on GPU
@@ -599,14 +596,12 @@ def train_xgboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
                 colsample_bylevel=0.8,
                 reg_alpha=0.1,
                 reg_lambda=1.0,
-                tree_method=tree_method,
-                device=device,
-                max_bin=256 if use_gpu else 256,  # Higher precision
-                grow_policy='lossguide' if use_gpu else 'depthwise',
-                max_leaves=127 if use_gpu else 0,
+                tree_method='hist',  # 'hist' works for both CPU and GPU in 2.0+
+                device=device,       # 'cuda' or 'cpu'
+                max_bin=256,
                 random_state=42+fold,
                 verbosity=0,
-                n_jobs=-1
+                n_jobs=-1 if device == 'cpu' else 1  # n_jobs only for CPU
             )
             model.fit(X_t[tr_idx], y_t[tr_idx],
                      eval_set=[(X_t[va_idx], y_t[va_idx])], verbose=False)
@@ -645,14 +640,13 @@ def train_lightgbm_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
                        checkpoint_manager: CheckpointManager,
                        interrupt_handler: GracefulInterrupt,
                        logger: logging.Logger, gpu_info: dict) -> Dict:
-    """Train LightGBM with GPU acceleration"""
+    """Train LightGBM (CPU - GPU requires special build)"""
     from sklearn.model_selection import KFold
     from lightgbm import LGBMRegressor
 
-    use_gpu = gpu_info['cuda_available']
+    # Note: LightGBM GPU requires special compilation, use CPU for reliability
     iters = config['lightgbm_iters']
-    device = 'gpu' if use_gpu else 'cpu'
-    logger.info(f"Training LIGHTGBM ({device}, iterations={iters})")
+    logger.info(f"Training LIGHTGBM (cpu, iterations={iters})")
 
     if 'lightgbm' not in checkpoint.predictions:
         checkpoint.predictions['lightgbm'] = {}
@@ -689,28 +683,21 @@ def train_lightgbm_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
             if interrupt_handler.check():
                 break
 
-            # LightGBM GPU params
-            model_params = {
-                'n_estimators': iters,
-                'max_depth': 10 if use_gpu else 8,
-                'num_leaves': 127 if use_gpu else 63,
-                'learning_rate': 0.03,
-                'subsample': 0.8,
-                'colsample_bytree': 0.8,
-                'reg_alpha': 0.1,
-                'reg_lambda': 1.0,
-                'random_state': 42+fold,
-                'verbosity': -1,
-                'n_jobs': -1,
-                'force_col_wise': True,  # Better for wide datasets
-            }
-
-            if use_gpu:
-                model_params['device'] = 'gpu'
-                model_params['gpu_platform_id'] = 0
-                model_params['gpu_device_id'] = 0
-
-            model = LGBMRegressor(**model_params)
+            # LightGBM CPU params (GPU requires special build)
+            model = LGBMRegressor(
+                n_estimators=iters,
+                max_depth=8,
+                num_leaves=63,
+                learning_rate=0.03,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                random_state=42+fold,
+                verbosity=-1,
+                n_jobs=-1,
+                force_col_wise=True,  # Better for wide datasets
+            )
             model.fit(X_t[tr_idx], y_t[tr_idx],
                      eval_set=[(X_t[va_idx], y_t[va_idx])])
             oof[va_idx] = model.predict(X_t[va_idx])
