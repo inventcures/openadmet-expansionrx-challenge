@@ -52,6 +52,14 @@ except ImportError:
     MULTITASK_AVAILABLE = False
     print("Multi-task NN not available")
 
+# Chemprop D-MPNN
+try:
+    from src.chemprop_optimized import ChempropEnsemble, CHEMPROP_HYPERPARAMS
+    CHEMPROP_AVAILABLE = True
+except ImportError:
+    CHEMPROP_AVAILABLE = False
+    print("Chemprop not available")
+
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, MACCSkeys
 
@@ -355,8 +363,8 @@ class GPUStackingEnsemble:
 # MAIN PIPELINE
 # ============================================================================
 
-def run_pipeline(mode='full', use_multitask=True):
-    """Run Phase 2B pipeline on RunPod with multi-task learning"""
+def run_pipeline(mode='full', use_multitask=True, use_chemprop=True):
+    """Run Phase 2B pipeline on RunPod with multi-task learning + Chemprop"""
 
     print("=" * 60)
     print(f"PHASE 2B PIPELINE - RUNPOD RTX 4090 ({mode.upper()} MODE)")
@@ -434,17 +442,69 @@ def run_pipeline(mode='full', use_multitask=True):
         mt_trainer.fit(X_train, y_dict, epochs=epochs, verbose=True)
         mt_predictions = mt_trainer.predict(X_test)
 
-        # Blend with GBDT predictions (0.7 GBDT + 0.3 NN)
-        print("\nBlending GBDT + Multi-task NN (0.7 + 0.3)...")
-        for target in TARGETS:
-            gbdt_pred = predictions[target]
-            mt_pred = mt_predictions[target]
-            blended = 0.7 * gbdt_pred + 0.3 * mt_pred
-            predictions[target] = np.clip(blended, *VALID_RANGES[target])
-
         if use_gpu:
             torch.cuda.empty_cache()
         gc.collect()
+
+    # Chemprop D-MPNN (Phase 2B)
+    cp_predictions = None
+    if use_chemprop and CHEMPROP_AVAILABLE:
+        print("\n" + "=" * 60)
+        print("CHEMPROP D-MPNN")
+        print("=" * 60)
+
+        train_smiles = train_df['SMILES'].tolist()
+        test_smiles = test_df['SMILES'].tolist()
+        n_models = 2 if mode == 'quick' else 3
+
+        cp_predictions = {}
+        for target in TARGETS:
+            print(f"\n{target}")
+            y = train_df[target].values
+            mask = ~np.isnan(y)
+            valid_smiles = [train_smiles[i] for i, m in enumerate(mask) if m]
+            valid_y = y[mask]
+            print(f"  Samples: {len(valid_y)}")
+
+            ensemble = ChempropEnsemble(target, n_models=n_models)
+            ensemble.fit(valid_smiles, valid_y, verbose=True)
+            cp_predictions[target] = ensemble.predict(test_smiles)
+
+            if use_gpu:
+                torch.cuda.empty_cache()
+            gc.collect()
+
+    # Blend all models
+    print("\n" + "=" * 60)
+    print("BLENDING PREDICTIONS")
+    print("=" * 60)
+
+    n_models = 1
+    if mt_predictions:
+        n_models += 1
+    if cp_predictions:
+        n_models += 1
+
+    # Weights: GBDT 0.6, Multi-task 0.25, Chemprop 0.15
+    for target in TARGETS:
+        gbdt_pred = predictions[target]
+
+        if n_models == 1:
+            blended = gbdt_pred
+        elif n_models == 2 and mt_predictions:
+            blended = 0.7 * gbdt_pred + 0.3 * mt_predictions[target]
+        elif n_models == 2 and cp_predictions:
+            blended = 0.75 * gbdt_pred + 0.25 * cp_predictions[target]
+        else:  # All 3 models
+            blended = (0.6 * gbdt_pred +
+                      0.25 * mt_predictions[target] +
+                      0.15 * cp_predictions[target])
+
+        predictions[target] = np.clip(blended, *VALID_RANGES[target])
+
+    print(f"Blended {n_models} model types: GBDT" +
+          (" + Multi-task" if mt_predictions else "") +
+          (" + Chemprop" if cp_predictions else ""))
 
     # Summary
     print("\n" + "=" * 60)
@@ -473,13 +533,20 @@ def run_pipeline(mode='full', use_multitask=True):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Phase 2B RunPod Pipeline')
     parser.add_argument('--mode', choices=['quick', 'full'], default='full',
-                       help='quick (~20 min) or full (~60 min)')
+                       help='quick (~30 min) or full (~90 min)')
     parser.add_argument('--no-multitask', action='store_true',
                        help='Disable multi-task neural network')
+    parser.add_argument('--no-chemprop', action='store_true',
+                       help='Disable Chemprop D-MPNN')
+    parser.add_argument('--gbdt-only', action='store_true',
+                       help='GBDT stacking only (fastest)')
     args = parser.parse_args()
 
+    use_mt = not args.no_multitask and not args.gbdt_only
+    use_cp = not args.no_chemprop and not args.gbdt_only
+
     start = time.time()
-    results, out_path = run_pipeline(args.mode, use_multitask=not args.no_multitask)
+    results, out_path = run_pipeline(args.mode, use_multitask=use_mt, use_chemprop=use_cp)
     elapsed = time.time() - start
 
     print(f"\nTotal time: {elapsed/60:.1f} minutes")
