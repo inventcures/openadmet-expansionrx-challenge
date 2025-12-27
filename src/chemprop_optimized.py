@@ -4,9 +4,9 @@ Phase 2B: Optimized Chemprop D-MPNN
 Hyperparameter-tuned message passing neural network for molecular property prediction.
 Trains ensemble of models with different seeds for robust predictions.
 
-Version: 2.1 (robust batch handling)
+Version: 2.2 (fixed data preparation - numpy to Python float)
 """
-_CHEMPROP_OPT_VERSION = "2.1"
+_CHEMPROP_OPT_VERSION = "2.2"
 import os
 import sys
 import numpy as np
@@ -121,24 +121,11 @@ class ChempropModel:
 
             try:
                 if targets is not None:
-                    # Try different Chemprop v2 API patterns
-                    try:
-                        # Chemprop v2.x: use from_smi class method if available
-                        if hasattr(MoleculeDatapoint, 'from_smi'):
-                            dp = MoleculeDatapoint.from_smi(smi, y=[targets[i]])
-                        else:
-                            dp = MoleculeDatapoint(smi, y=[targets[i]])
-                    except TypeError:
-                        # Alternative: pass mol object
-                        dp = MoleculeDatapoint(mol=mol, y=[targets[i]])
+                    # IMPORTANT: Convert numpy float to Python float for Chemprop
+                    y_val = [float(targets[i])]
+                    dp = MoleculeDatapoint.from_smi(smi, y=y_val)
                 else:
-                    try:
-                        if hasattr(MoleculeDatapoint, 'from_smi'):
-                            dp = MoleculeDatapoint.from_smi(smi)
-                        else:
-                            dp = MoleculeDatapoint(smi)
-                    except TypeError:
-                        dp = MoleculeDatapoint(mol=mol)
+                    dp = MoleculeDatapoint.from_smi(smi)
                 datapoints.append(dp)
             except Exception as e:
                 # Skip problematic molecules
@@ -197,24 +184,7 @@ class ChempropModel:
             n_batches = 0
             for batch in train_loader:
                 try:
-                    # Chemprop v2: batch is a TrainingBatch dataclass
-                    bmg = getattr(batch, 'bmg', None)
-                    if bmg is None:
-                        # Try alternative attribute names
-                        bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
-                    if bmg is None:
-                        continue  # Skip invalid batches
-
-                    # Validate BatchMolGraph has required tensors
-                    if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
-                        continue  # Skip malformed batch
-
-                    bmg = bmg.to(self.device)
-
-                    # Re-check after device transfer
-                    if getattr(bmg, 'V', None) is None:
-                        continue
-
+                    bmg = batch.bmg.to(self.device)
                     y = get_targets(batch)
 
                     optimizer.zero_grad()
@@ -226,7 +196,9 @@ class ChempropModel:
                     train_loss += loss.item()
                     n_batches += 1
                 except Exception as e:
-                    # Skip problematic batches
+                    # Log first few errors for debugging
+                    if n_batches == 0:
+                        print(f"    Batch error: {e}")
                     continue
 
             if n_batches == 0:
@@ -242,20 +214,7 @@ class ChempropModel:
                 with torch.no_grad():
                     for batch in val_loader:
                         try:
-                            bmg = getattr(batch, 'bmg', None)
-                            if bmg is None:
-                                bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
-                            if bmg is None:
-                                continue
-
-                            # Validate BatchMolGraph has required tensors
-                            if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
-                                continue
-
-                            bmg = bmg.to(self.device)
-                            if getattr(bmg, 'V', None) is None:
-                                continue
-
+                            bmg = batch.bmg.to(self.device)
                             y = get_targets(batch)
                             preds = self.model(bmg)
                             loss = criterion(preds.squeeze(), y.squeeze())
@@ -295,29 +254,12 @@ class ChempropModel:
         with torch.no_grad():
             for batch in loader:
                 try:
-                    # Chemprop v2: use batch.bmg for molecular graph
-                    bmg = getattr(batch, 'bmg', None)
-                    if bmg is None:
-                        bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
-
-                    # Check if batch is valid
-                    if bmg is None or getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
-                        # Return NaN for failed molecules
-                        batch_size = len(getattr(batch, 'smiles', [])) or 1
-                        predictions.extend([np.nan] * batch_size)
-                        continue
-
-                    bmg = bmg.to(self.device)
-                    if getattr(bmg, 'V', None) is None:
-                        batch_size = len(getattr(batch, 'smiles', [])) or 1
-                        predictions.extend([np.nan] * batch_size)
-                        continue
-
+                    bmg = batch.bmg.to(self.device)
                     preds = self.model(bmg)
                     predictions.extend(preds.cpu().numpy().flatten())
                 except Exception:
-                    batch_size = len(getattr(batch, 'smiles', [])) or 1
-                    predictions.extend([np.nan] * batch_size)
+                    # For failed batches, use NaN (will be replaced with mean later)
+                    predictions.extend([np.nan])
 
         # Inverse transform
         predictions = np.array(predictions) * self.scaler_std + self.scaler_mean
