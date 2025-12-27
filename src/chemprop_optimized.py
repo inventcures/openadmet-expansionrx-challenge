@@ -20,6 +20,11 @@ try:
     from chemprop import data, featurizers, models, nn
     from chemprop.data import MoleculeDatapoint, MoleculeDataset, build_dataloader
     CHEMPROP_AVAILABLE = True
+
+    # Log version and API info for debugging
+    _chemprop_version = getattr(chemprop, '__version__', 'unknown')
+    _has_from_smi = hasattr(MoleculeDatapoint, 'from_smi')
+    print(f"Chemprop v{_chemprop_version} loaded (from_smi: {_has_from_smi})")
 except ImportError:
     CHEMPROP_AVAILABLE = False
     print("Chemprop not available - install with: pip install chemprop")
@@ -106,24 +111,38 @@ class ChempropModel:
 
         datapoints = []
         for i, smi in enumerate(smiles):
+            # Validate SMILES first
             mol = Chem.MolFromSmiles(smi)
             if mol is None:
                 continue
 
-            if targets is not None:
-                # Chemprop v2 API: MoleculeDatapoint(mol=mol, y=targets)
-                try:
-                    dp = MoleculeDatapoint(mol=mol, y=[targets[i]])
-                except TypeError:
-                    # Fallback for different API versions
-                    dp = MoleculeDatapoint(smi, y=[targets[i]])
+            try:
+                if targets is not None:
+                    # Try different Chemprop v2 API patterns
+                    try:
+                        # Chemprop v2.x: use from_smi class method if available
+                        if hasattr(MoleculeDatapoint, 'from_smi'):
+                            dp = MoleculeDatapoint.from_smi(smi, y=[targets[i]])
+                        else:
+                            dp = MoleculeDatapoint(smi, y=[targets[i]])
+                    except TypeError:
+                        # Alternative: pass mol object
+                        dp = MoleculeDatapoint(mol=mol, y=[targets[i]])
+                else:
+                    try:
+                        if hasattr(MoleculeDatapoint, 'from_smi'):
+                            dp = MoleculeDatapoint.from_smi(smi)
+                        else:
+                            dp = MoleculeDatapoint(smi)
+                    except TypeError:
+                        dp = MoleculeDatapoint(mol=mol)
                 datapoints.append(dp)
-            else:
-                try:
-                    dp = MoleculeDatapoint(mol=mol)
-                except TypeError:
-                    dp = MoleculeDatapoint(smi)
-                datapoints.append(dp)
+            except Exception as e:
+                # Skip problematic molecules
+                continue
+
+        if len(datapoints) == 0:
+            raise ValueError("No valid molecules found in dataset")
 
         return MoleculeDataset(datapoints)
 
@@ -181,6 +200,10 @@ class ChempropModel:
                 if bmg is None:
                     continue  # Skip invalid batches
 
+                # Validate BatchMolGraph has required tensors
+                if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
+                    continue  # Skip malformed batch
+
                 bmg = bmg.to(self.device)
                 y = get_targets(batch)
 
@@ -204,6 +227,10 @@ class ChempropModel:
                         if bmg is None:
                             bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
                         if bmg is None:
+                            continue
+
+                        # Validate BatchMolGraph has required tensors
+                        if getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
                             continue
 
                         bmg = bmg.to(self.device)
@@ -246,7 +273,9 @@ class ChempropModel:
                 bmg = getattr(batch, 'bmg', None)
                 if bmg is None:
                     bmg = getattr(batch, 'mg', None) or getattr(batch, 'batch', None)
-                if bmg is None:
+
+                # Check if batch is valid
+                if bmg is None or getattr(bmg, 'V', None) is None or getattr(bmg, 'E', None) is None:
                     # Return NaN for failed molecules
                     batch_size = len(getattr(batch, 'smiles', [])) or 1
                     predictions.extend([np.nan] * batch_size)
