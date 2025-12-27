@@ -155,16 +155,27 @@ class ChempropModel:
         best_val_loss = float('inf')
         patience_counter = 0
 
+        def get_targets(batch):
+            """Extract targets from chemprop v2 batch (handles API variations)"""
+            # Try different attribute names used in chemprop versions
+            for attr in ['Y', 'y', 'targets']:
+                if hasattr(batch, attr):
+                    t = getattr(batch, attr)
+                    if t is not None:
+                        if hasattr(t, 'to'):
+                            return t.to(self.device)
+                        return torch.tensor(t, device=self.device, dtype=torch.float32)
+            raise AttributeError(f"Cannot find targets in batch. Attributes: {dir(batch)}")
+
         for epoch in range(epochs):
             # Training
             self.model.train()
             train_loss = 0.0
 
             for batch in train_loader:
-                # Chemprop v2: batch is a TrainingBatch dataclass, not a tensor
-                # Move components to device individually
+                # Chemprop v2: batch is a TrainingBatch dataclass
                 bmg = batch.bmg
-                y = batch.y.to(self.device) if hasattr(batch.y, 'to') else torch.tensor(batch.y, device=self.device)
+                y = get_targets(batch)
 
                 optimizer.zero_grad()
                 preds = self.model(bmg)
@@ -183,7 +194,7 @@ class ChempropModel:
                 with torch.no_grad():
                     for batch in val_loader:
                         bmg = batch.bmg
-                        y = batch.y.to(self.device) if hasattr(batch.y, 'to') else torch.tensor(batch.y, device=self.device)
+                        y = get_targets(batch)
                         preds = self.model(bmg)
                         loss = criterion(preds.squeeze(), y.squeeze())
                         val_loss += loss.item()
