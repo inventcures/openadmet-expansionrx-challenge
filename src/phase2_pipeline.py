@@ -16,6 +16,10 @@ import time
 from datetime import datetime
 warnings.filterwarnings('ignore')
 
+# Suppress RDKit deprecation warnings
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
+
 from feature_engineering_v2 import FeatureEngineerV2, compute_phase2_features
 from stacking_ensemble import StackingEnsemble, EndpointStackingEnsemble
 from validation import RepeatedCVValidator, QuickValidator, validate_with_baselines

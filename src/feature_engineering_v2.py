@@ -8,6 +8,10 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 
+# Suppress RDKit deprecation warnings
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
+
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, MACCSkeys
 from rdkit.Chem.AtomPairs import Pairs, Torsions
