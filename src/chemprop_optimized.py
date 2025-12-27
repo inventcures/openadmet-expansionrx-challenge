@@ -101,17 +101,29 @@ class ChempropModel:
         return model.to(self.device)
 
     def _prepare_data(self, smiles, targets=None):
-        """Prepare data for Chemprop"""
-        if targets is not None:
-            datapoints = [
-                MoleculeDatapoint(smi, y=[t])
-                for smi, t in zip(smiles, targets)
-            ]
-        else:
-            datapoints = [
-                MoleculeDatapoint(smi)
-                for smi in smiles
-            ]
+        """Prepare data for Chemprop v2"""
+        from rdkit import Chem
+
+        datapoints = []
+        for i, smi in enumerate(smiles):
+            mol = Chem.MolFromSmiles(smi)
+            if mol is None:
+                continue
+
+            if targets is not None:
+                # Chemprop v2 API: MoleculeDatapoint(mol=mol, y=targets)
+                try:
+                    dp = MoleculeDatapoint(mol=mol, y=[targets[i]])
+                except TypeError:
+                    # Fallback for different API versions
+                    dp = MoleculeDatapoint(smi, y=[targets[i]])
+                datapoints.append(dp)
+            else:
+                try:
+                    dp = MoleculeDatapoint(mol=mol)
+                except TypeError:
+                    dp = MoleculeDatapoint(smi)
+                datapoints.append(dp)
 
         return MoleculeDataset(datapoints)
 
