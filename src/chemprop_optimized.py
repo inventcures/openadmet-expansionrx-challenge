@@ -174,7 +174,7 @@ class ChempropModel:
 
             for batch in train_loader:
                 # Chemprop v2: batch is a TrainingBatch dataclass
-                bmg = batch.bmg
+                bmg = batch.bmg.to(self.device)
                 y = get_targets(batch)
 
                 optimizer.zero_grad()
@@ -193,7 +193,7 @@ class ChempropModel:
                 val_loss = 0.0
                 with torch.no_grad():
                     for batch in val_loader:
-                        bmg = batch.bmg
+                        bmg = batch.bmg.to(self.device)
                         y = get_targets(batch)
                         preds = self.model(bmg)
                         loss = criterion(preds.squeeze(), y.squeeze())
@@ -230,7 +230,7 @@ class ChempropModel:
         with torch.no_grad():
             for batch in loader:
                 # Chemprop v2: use batch.bmg for molecular graph
-                bmg = batch.bmg
+                bmg = batch.bmg.to(self.device)
                 preds = self.model(bmg)
                 predictions.extend(preds.cpu().numpy().flatten())
 
