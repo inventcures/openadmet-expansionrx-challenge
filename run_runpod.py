@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ADMET Challenge - RunPod GPU-Optimized Training Script
-Optimized for RTX 4090 / A100 / H100 with CUDA acceleration.
+MAXIMALLY OPTIMIZED for RTX 4090 / A100 / H100 with CUDA acceleration.
 
 Usage:
     python run_runpod.py                    # Resume from checkpoint (full mode)
@@ -9,18 +9,25 @@ Usage:
     python run_runpod.py --force            # Force restart from scratch
     python run_runpod.py --status           # Show checkpoint status
 
-Key differences from run_local_m3.py:
-    - CUDA acceleration for all models
-    - GPU-optimized hyperparameters (larger batches, gpu_hist)
-    - Multi-GPU support detection
-    - CUDA memory management
+RTX 4090 Optimizations:
+    - TensorFloat-32 (TF32) for Ampere/Ada GPUs
+    - cuDNN benchmark mode for fastest kernels
+    - Mixed precision (FP16/BF16) where supported
+    - Optimized batch sizes for 24GB VRAM
+    - gpu_hist with max_bin=256 for XGBoost
+    - CUDA-native LightGBM
 """
 
 import warnings
 warnings.filterwarnings('ignore')
 import os
+
+# Suppress RDKit warnings
 os.environ['RDKit_DEPRECATION_WARNINGS'] = '0'
+
+# CUDA optimizations - set before importing torch
 os.environ['CUDA_LAUNCH_BLOCKING'] = '0'  # Async CUDA ops
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'  # Better memory management
 
 import sys
 import argparse
@@ -65,42 +72,50 @@ VALID_RANGES = {
     'MPPB': (0.0, 100.0), 'MBPB': (0.0, 100.0), 'MGMB': (0.0, 100.0)
 }
 
-# GPU-Optimized Mode configurations (more iterations since GPU is fast)
+# GPU-Optimized Mode configurations - MAXIMIZED for RTX 4090
 MODE_CONFIG = {
     'quick': {
-        'iterations': 300,
-        'chemprop_epochs': 10,
-        'chemprop_batch_size': 128,
-        'n_bits': 1024,
-        'description': 'Quick GPU test (~5-8 min)'
+        'catboost_iters': 500,
+        'xgboost_iters': 500,
+        'lightgbm_iters': 500,
+        'chemprop_epochs': 15,
+        'chemprop_batch_size': 256,  # RTX 4090 can handle large batches
+        'n_bits': 2048,
+        'description': 'Quick GPU test (~8-12 min)'
     },
     'medium': {
-        'iterations': 800,
-        'chemprop_epochs': 25,
-        'chemprop_batch_size': 128,
+        'catboost_iters': 1000,
+        'xgboost_iters': 1000,
+        'lightgbm_iters': 1000,
+        'chemprop_epochs': 30,
+        'chemprop_batch_size': 512,
         'n_bits': 2048,
-        'description': 'Balanced GPU (~15-25 min)'
+        'description': 'Balanced GPU (~20-30 min)'
     },
     'full': {
-        'iterations': 1500,
-        'chemprop_epochs': 40,
-        'chemprop_batch_size': 256,
+        'catboost_iters': 2000,
+        'xgboost_iters': 2000,
+        'lightgbm_iters': 2000,
+        'chemprop_epochs': 50,
+        'chemprop_batch_size': 512,
         'n_bits': 2048,
-        'description': 'Full GPU accuracy (~30-45 min)'
+        'description': 'Full GPU accuracy (~40-60 min)'
     }
 }
 
 # ============================================================================
-# GPU DETECTION & SETUP
+# GPU DETECTION & OPTIMIZATION
 # ============================================================================
 
 def setup_gpu():
-    """Detect and configure GPU"""
+    """Detect and configure GPU with maximum optimizations for RTX 4090"""
     gpu_info = {
         'cuda_available': False,
         'device_count': 0,
         'device_name': 'CPU',
-        'memory_gb': 0
+        'memory_gb': 0,
+        'compute_capability': (0, 0),
+        'is_ampere_or_newer': False
     }
 
     try:
@@ -109,12 +124,35 @@ def setup_gpu():
             gpu_info['cuda_available'] = True
             gpu_info['device_count'] = torch.cuda.device_count()
             gpu_info['device_name'] = torch.cuda.get_device_name(0)
-            gpu_info['memory_gb'] = torch.cuda.get_device_properties(0).total_memory / 1e9
+            props = torch.cuda.get_device_properties(0)
+            gpu_info['memory_gb'] = props.total_memory / 1e9
+            gpu_info['compute_capability'] = (props.major, props.minor)
 
-            # Set optimal CUDA settings
+            # Check if Ampere (8.x) or Ada (8.9) or newer
+            gpu_info['is_ampere_or_newer'] = props.major >= 8
+
+            # === RTX 4090 / Ampere+ Optimizations ===
+
+            # Enable TensorFloat-32 (TF32) for massive speedup on Ampere/Ada
+            # TF32 uses 19 bits (10 mantissa) vs FP32's 23 bits - 3x faster matmul
+            if gpu_info['is_ampere_or_newer']:
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+                print(f"[GPU] Enabled TF32 for {gpu_info['device_name']}")
+
+            # Enable cuDNN autotuning - finds fastest convolution algorithms
             torch.backends.cudnn.benchmark = True
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
+
+            # Enable flash attention if available (PyTorch 2.0+)
+            if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+                torch.backends.cuda.enable_flash_sdp(True)
+                torch.backends.cuda.enable_mem_efficient_sdp(True)
+
+            # Pre-allocate GPU memory to avoid fragmentation
+            torch.cuda.empty_cache()
+
+            print(f"[GPU] {gpu_info['device_name']}: {gpu_info['memory_gb']:.1f}GB, "
+                  f"Compute {props.major}.{props.minor}")
     except ImportError:
         pass
 
@@ -163,7 +201,7 @@ def setup_logging(log_file: Path) -> logging.Logger:
 
 
 # ============================================================================
-# CHECKPOINT MANAGEMENT (same as local version)
+# CHECKPOINT MANAGEMENT
 # ============================================================================
 
 class TrainingStage(Enum):
@@ -381,7 +419,7 @@ def compute_rae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
 
 # ============================================================================
-# GPU-OPTIMIZED MODEL TRAINING
+# GPU-OPTIMIZED MODEL TRAINING - RTX 4090 MAXED
 # ============================================================================
 
 def train_catboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
@@ -389,14 +427,14 @@ def train_catboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
                        checkpoint_manager: CheckpointManager,
                        interrupt_handler: GracefulInterrupt,
                        logger: logging.Logger, gpu_info: dict) -> Dict:
-    """Train CatBoost with GPU acceleration"""
+    """Train CatBoost with RTX 4090 GPU optimizations"""
     from sklearn.model_selection import KFold
     from catboost import CatBoostRegressor
 
-    # CatBoost GPU settings
     use_gpu = gpu_info['cuda_available']
     task_type = 'GPU' if use_gpu else 'CPU'
-    logger.info(f"Training CATBOOST ({task_type}, iterations={config['iterations']})")
+    iters = config['catboost_iters']
+    logger.info(f"Training CATBOOST ({task_type}, iterations={iters})")
 
     if 'catboost' not in checkpoint.predictions:
         checkpoint.predictions['catboost'] = {}
@@ -433,25 +471,36 @@ def train_catboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
             if interrupt_handler.check():
                 break
 
-            # GPU mode has limited param support - no colsample_bylevel (rsm)
-            model_params = {
-                'iterations': config['iterations'],
-                'depth': 8,
-                'learning_rate': 0.03,
-                'l2_leaf_reg': 3.0,
-                'task_type': task_type,
-                'verbose': False,
-                'random_seed': 42+fold,
-                'early_stopping_rounds': 100
-            }
+            # RTX 4090 optimized CatBoost params
             if use_gpu:
-                model_params['devices'] = '0'
-                model_params['bootstrap_type'] = 'Bernoulli'
-                model_params['subsample'] = 0.8
+                model = CatBoostRegressor(
+                    iterations=iters,
+                    depth=10,  # Deeper trees on GPU
+                    learning_rate=0.03,
+                    l2_leaf_reg=3.0,
+                    task_type='GPU',
+                    devices='0',
+                    bootstrap_type='Bernoulli',
+                    subsample=0.8,
+                    grow_policy='Lossguide',  # Faster on GPU
+                    max_leaves=64,  # For Lossguide
+                    verbose=False,
+                    random_seed=42+fold,
+                    early_stopping_rounds=100
+                )
             else:
-                model_params['subsample'] = 0.8
-                model_params['colsample_bylevel'] = 0.8
-            model = CatBoostRegressor(**model_params)
+                model = CatBoostRegressor(
+                    iterations=iters,
+                    depth=8,
+                    learning_rate=0.03,
+                    l2_leaf_reg=3.0,
+                    subsample=0.8,
+                    colsample_bylevel=0.8,
+                    verbose=False,
+                    random_seed=42+fold,
+                    early_stopping_rounds=100
+                )
+
             model.fit(X_t[tr_idx], y_t[tr_idx],
                      eval_set=(X_t[va_idx], y_t[va_idx]), verbose=False)
             oof[va_idx] = model.predict(X_t[va_idx])
@@ -478,6 +527,9 @@ def train_catboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
         logger.info(f"  CATBOOST MA-RAE: {ma_rae:.4f} ({elapsed:.0f}s)")
 
     gc.collect()
+    if use_gpu:
+        import torch
+        torch.cuda.empty_cache()
     return checkpoint.results.get('catboost', {})
 
 
@@ -486,14 +538,21 @@ def train_xgboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
                       checkpoint_manager: CheckpointManager,
                       interrupt_handler: GracefulInterrupt,
                       logger: logging.Logger, gpu_info: dict) -> Dict:
-    """Train XGBoost with GPU acceleration (gpu_hist)"""
+    """Train XGBoost with RTX 4090 GPU optimizations"""
     from sklearn.model_selection import KFold
     from xgboost import XGBRegressor
 
     use_gpu = gpu_info['cuda_available']
-    tree_method = 'gpu_hist' if use_gpu else 'hist'
-    device = 'cuda' if use_gpu else 'cpu'
-    logger.info(f"Training XGBOOST ({tree_method}, iterations={config['iterations']})")
+    iters = config['xgboost_iters']
+
+    if use_gpu:
+        tree_method = 'gpu_hist'
+        device = 'cuda'
+    else:
+        tree_method = 'hist'
+        device = 'cpu'
+
+    logger.info(f"Training XGBOOST ({tree_method}, iterations={iters})")
 
     if 'xgboost' not in checkpoint.predictions:
         checkpoint.predictions['xgboost'] = {}
@@ -530,16 +589,21 @@ def train_xgboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
             if interrupt_handler.check():
                 break
 
+            # RTX 4090 optimized XGBoost params
             model = XGBRegressor(
-                n_estimators=config['iterations'],
-                max_depth=8,  # Deeper on GPU
+                n_estimators=iters,
+                max_depth=10 if use_gpu else 8,  # Deeper on GPU
                 learning_rate=0.03,
                 subsample=0.8,
                 colsample_bytree=0.8,
+                colsample_bylevel=0.8,
                 reg_alpha=0.1,
                 reg_lambda=1.0,
                 tree_method=tree_method,
                 device=device,
+                max_bin=256 if use_gpu else 256,  # Higher precision
+                grow_policy='lossguide' if use_gpu else 'depthwise',
+                max_leaves=127 if use_gpu else 0,
                 random_state=42+fold,
                 verbosity=0,
                 n_jobs=-1
@@ -570,6 +634,9 @@ def train_xgboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
         logger.info(f"  XGBOOST MA-RAE: {ma_rae:.4f} ({elapsed:.0f}s)")
 
     gc.collect()
+    if use_gpu:
+        import torch
+        torch.cuda.empty_cache()
     return checkpoint.results.get('xgboost', {})
 
 
@@ -583,8 +650,9 @@ def train_lightgbm_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
     from lightgbm import LGBMRegressor
 
     use_gpu = gpu_info['cuda_available']
+    iters = config['lightgbm_iters']
     device = 'gpu' if use_gpu else 'cpu'
-    logger.info(f"Training LIGHTGBM ({device}, iterations={config['iterations']})")
+    logger.info(f"Training LIGHTGBM ({device}, iterations={iters})")
 
     if 'lightgbm' not in checkpoint.predictions:
         checkpoint.predictions['lightgbm'] = {}
@@ -621,21 +689,28 @@ def train_lightgbm_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
             if interrupt_handler.check():
                 break
 
-            model = LGBMRegressor(
-                n_estimators=config['iterations'],
-                max_depth=8,
-                learning_rate=0.03,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                reg_alpha=0.1,
-                reg_lambda=1.0,
-                device=device,
-                gpu_platform_id=0 if use_gpu else -1,
-                gpu_device_id=0 if use_gpu else -1,
-                random_state=42+fold,
-                verbosity=-1,
-                n_jobs=-1
-            )
+            # LightGBM GPU params
+            model_params = {
+                'n_estimators': iters,
+                'max_depth': 10 if use_gpu else 8,
+                'num_leaves': 127 if use_gpu else 63,
+                'learning_rate': 0.03,
+                'subsample': 0.8,
+                'colsample_bytree': 0.8,
+                'reg_alpha': 0.1,
+                'reg_lambda': 1.0,
+                'random_state': 42+fold,
+                'verbosity': -1,
+                'n_jobs': -1,
+                'force_col_wise': True,  # Better for wide datasets
+            }
+
+            if use_gpu:
+                model_params['device'] = 'gpu'
+                model_params['gpu_platform_id'] = 0
+                model_params['gpu_device_id'] = 0
+
+            model = LGBMRegressor(**model_params)
             model.fit(X_t[tr_idx], y_t[tr_idx],
                      eval_set=[(X_t[va_idx], y_t[va_idx])])
             oof[va_idx] = model.predict(X_t[va_idx])
@@ -670,19 +745,21 @@ def train_chemprop_gpu(train_df: pd.DataFrame, test_df: pd.DataFrame,
                        checkpoint_manager: CheckpointManager,
                        interrupt_handler: GracefulInterrupt,
                        logger: logging.Logger, gpu_info: dict) -> Dict:
-    """Train Chemprop D-MPNN with CUDA acceleration"""
+    """Train Chemprop D-MPNN with RTX 4090 CUDA optimizations"""
     try:
         import torch
         import lightning as pl
         from chemprop import data, models, nn
 
         logging.getLogger('lightning.pytorch').setLevel(logging.ERROR)
+        logging.getLogger('lightning.fabric').setLevel(logging.ERROR)
 
         use_gpu = gpu_info['cuda_available']
         device = "cuda" if use_gpu else "cpu"
         batch_size = config['chemprop_batch_size']
+        epochs = config['chemprop_epochs']
 
-        logger.info(f"Training CHEMPROP ({device}, epochs={config['chemprop_epochs']}, batch={batch_size})")
+        logger.info(f"Training CHEMPROP ({device}, epochs={epochs}, batch={batch_size})")
 
         if 'chemprop' not in checkpoint.predictions:
             checkpoint.predictions['chemprop'] = {}
@@ -728,19 +805,34 @@ def train_chemprop_gpu(train_df: pd.DataFrame, test_df: pd.DataFrame,
             ffn = nn.RegressionFFN()
             mpnn = models.MPNN(mp, agg, ffn)
 
-            trainer = pl.Trainer(
-                max_epochs=config['chemprop_epochs'],
-                accelerator='gpu' if use_gpu else 'cpu',
-                devices=1,
-                precision='16-mixed' if use_gpu else 32,  # Mixed precision on GPU
-                enable_progress_bar=False,
-                logger=False,
-                enable_checkpointing=False
-            )
+            # RTX 4090 optimized trainer
+            trainer_kwargs = {
+                'max_epochs': epochs,
+                'accelerator': 'gpu' if use_gpu else 'cpu',
+                'devices': 1,
+                'enable_progress_bar': False,
+                'logger': False,
+                'enable_checkpointing': False,
+            }
 
-            train_loader = data.build_dataloader(train_dset, batch_size=batch_size, shuffle=True)
-            val_loader = data.build_dataloader(val_dset, batch_size=batch_size)
-            test_loader = data.build_dataloader(test_dset, batch_size=batch_size)
+            # Use mixed precision on GPU for speed
+            if use_gpu:
+                # BF16 is better on Ampere+, FP16 otherwise
+                if gpu_info.get('is_ampere_or_newer', False):
+                    trainer_kwargs['precision'] = 'bf16-mixed'
+                else:
+                    trainer_kwargs['precision'] = '16-mixed'
+
+            trainer = pl.Trainer(**trainer_kwargs)
+
+            # Use more workers for data loading on GPU
+            num_workers = 4 if use_gpu else 0
+            train_loader = data.build_dataloader(train_dset, batch_size=batch_size,
+                                                  shuffle=True, num_workers=num_workers)
+            val_loader = data.build_dataloader(val_dset, batch_size=batch_size,
+                                                num_workers=num_workers)
+            test_loader = data.build_dataloader(test_dset, batch_size=batch_size,
+                                                 num_workers=num_workers)
 
             trainer.fit(mpnn, train_loader, val_loader)
             preds = trainer.predict(mpnn, test_loader)
@@ -766,6 +858,8 @@ def train_chemprop_gpu(train_df: pd.DataFrame, test_df: pd.DataFrame,
 
     except Exception as e:
         logger.warning(f"Chemprop failed: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         return {}
 
 
@@ -834,9 +928,11 @@ def save_individual_submissions(checkpoint: Checkpoint, test_df: pd.DataFrame,
 
 def print_summary(checkpoint: Checkpoint, gpu_info: dict, logger: logging.Logger):
     print("\n" + "="*70)
-    print("FINAL SUMMARY (GPU)")
+    print("FINAL SUMMARY (GPU-OPTIMIZED)")
     print("="*70)
     print(f"\nGPU: {gpu_info.get('device_name', 'N/A')} ({gpu_info.get('memory_gb', 0):.1f} GB)")
+    if gpu_info.get('is_ampere_or_newer'):
+        print("     TF32 enabled, BF16 mixed precision")
 
     print("\n" + "-"*50)
     print("MODEL RESULTS (MA-RAE)")
@@ -869,7 +965,7 @@ def print_summary(checkpoint: Checkpoint, gpu_info: dict, logger: logging.Logger
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='ADMET - RunPod GPU Training')
+    parser = argparse.ArgumentParser(description='ADMET - RunPod GPU Training (RTX 4090 Optimized)')
     parser.add_argument('--mode', choices=['quick', 'medium', 'full'], default='full')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--status', action='store_true')
@@ -884,7 +980,7 @@ def main():
     log_file = LOG_DIR / f"training_gpu_{args.mode}_{timestamp}.log"
     logger = setup_logging(log_file)
 
-    # GPU detection
+    # GPU detection with optimizations
     gpu_info = setup_gpu()
 
     cm = CheckpointManager(CHECKPOINT_DIR, args.mode)
@@ -911,9 +1007,14 @@ def main():
         )
 
     print("="*70)
-    print("ADMET CHALLENGE - RUNPOD GPU TRAINING")
+    print("ADMET CHALLENGE - RUNPOD GPU TRAINING (RTX 4090 OPTIMIZED)")
     print(f"Mode: {args.mode} ({config['description']})")
-    print(f"GPU: {gpu_info['device_name']} ({gpu_info['memory_gb']:.1f} GB)" if gpu_info['cuda_available'] else "GPU: Not available (CPU mode)")
+    if gpu_info['cuda_available']:
+        print(f"GPU: {gpu_info['device_name']} ({gpu_info['memory_gb']:.1f} GB)")
+        if gpu_info['is_ampere_or_newer']:
+            print("     TF32 + BF16 mixed precision enabled")
+    else:
+        print("GPU: Not available (CPU mode)")
     print(f"Log: {log_file}")
     print("="*70)
 
