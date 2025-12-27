@@ -433,20 +433,25 @@ def train_catboost_gpu(X_train_all: np.ndarray, train_df: pd.DataFrame,
             if interrupt_handler.check():
                 break
 
-            model = CatBoostRegressor(
-                iterations=config['iterations'],
-                depth=8,  # Deeper on GPU
-                learning_rate=0.03,
-                bootstrap_type='Bernoulli' if use_gpu else 'Bayesian',  # Bernoulli supports subsample
-                subsample=0.8,
-                colsample_bylevel=0.8,
-                l2_leaf_reg=3.0,
-                task_type=task_type,
-                devices='0' if use_gpu else None,
-                verbose=False,
-                random_seed=42+fold,
-                early_stopping_rounds=100
-            )
+            # GPU mode has limited param support - no colsample_bylevel (rsm)
+            model_params = {
+                'iterations': config['iterations'],
+                'depth': 8,
+                'learning_rate': 0.03,
+                'l2_leaf_reg': 3.0,
+                'task_type': task_type,
+                'verbose': False,
+                'random_seed': 42+fold,
+                'early_stopping_rounds': 100
+            }
+            if use_gpu:
+                model_params['devices'] = '0'
+                model_params['bootstrap_type'] = 'Bernoulli'
+                model_params['subsample'] = 0.8
+            else:
+                model_params['subsample'] = 0.8
+                model_params['colsample_bylevel'] = 0.8
+            model = CatBoostRegressor(**model_params)
             model.fit(X_t[tr_idx], y_t[tr_idx],
                      eval_set=(X_t[va_idx], y_t[va_idx]), verbose=False)
             oof[va_idx] = model.predict(X_t[va_idx])
