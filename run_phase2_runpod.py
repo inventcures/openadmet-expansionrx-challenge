@@ -42,8 +42,9 @@ from catboost import CatBoostRegressor
 try:
     import lightgbm as lgb
     LGB_AVAILABLE = True
-except:
+except ImportError:
     LGB_AVAILABLE = False
+    lgb = None
 
 from sklearn.model_selection import KFold
 from sklearn.linear_model import RidgeCV
@@ -328,7 +329,7 @@ def get_descriptors(mol) -> np.ndarray:
             Descriptors.NumAliphaticCarbocycles(mol),
             Descriptors.NumAliphaticHeterocycles(mol),
         ], dtype=np.float32)
-    except:
+    except Exception:
         return np.zeros(50, dtype=np.float32)
 
 
@@ -379,7 +380,7 @@ def compute_features_gpu(smiles_list, use_maccs=True, use_rdkit_fp=True,
 
             desc = get_descriptors(mol)
             features[i, idx:idx+desc_count] = desc
-        except:
+        except Exception:
             continue
 
     features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
@@ -487,10 +488,16 @@ class GPUStackingEnsemble:
             self.base_models['catboost'].append(cb_model)
 
             # LightGBM
-            if LGB_AVAILABLE:
+            if LGB_AVAILABLE and lgb is not None:
                 lgb_model = self._create_lgb(hp)
-                lgb_model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)],
-                             callbacks=[lgb.early_stopping(100, verbose=False)])
+                try:
+                    # LightGBM >= 4.0 API
+                    lgb_model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)],
+                                 callbacks=[lgb.early_stopping(100, verbose=False)])
+                except TypeError:
+                    # Fallback for older LightGBM
+                    lgb_model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)],
+                                 early_stopping_rounds=100, verbose=False)
                 oof_preds['lgb'][va_idx] = lgb_model.predict(X_va)
                 self.base_models['lgb'].append(lgb_model)
 
@@ -510,8 +517,10 @@ class GPUStackingEnsemble:
 
         oof_final = self.meta_model.predict(stack_features)
         mae = mean_absolute_error(y, oof_final)
-        rae = mae / np.mean(np.abs(y - np.mean(y)))
-        spear = spearmanr(y, oof_final)[0]
+        y_var = np.mean(np.abs(y - np.mean(y)))
+        rae = mae / y_var if y_var > 1e-10 else mae  # Avoid division by zero
+        spear_result = spearmanr(y, oof_final)
+        spear = spear_result[0] if not np.isnan(spear_result[0]) else 0.0
 
         return {'MAE': mae, 'RAE': rae, 'Spearman': spear}
 
@@ -561,8 +570,28 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
     # STAGE 1: Load Data
     # ========================================================================
     logger.info("\n[1/7] Loading data...")
-    train_df = pd.read_csv(BASE_DIR / "data/raw/train.csv")
-    test_df = pd.read_csv(BASE_DIR / "data/raw/test_blinded.csv")
+    train_path = BASE_DIR / "data/raw/train.csv"
+    test_path = BASE_DIR / "data/raw/test_blinded.csv"
+
+    if not train_path.exists():
+        raise FileNotFoundError(f"Training data not found: {train_path}")
+    if not test_path.exists():
+        raise FileNotFoundError(f"Test data not found: {test_path}")
+
+    train_df = pd.read_csv(train_path)
+    test_df = pd.read_csv(test_path)
+
+    # Validate required columns
+    required_train_cols = ['SMILES'] + TARGETS
+    required_test_cols = ['SMILES', 'Molecule Name']
+    missing_train = [c for c in required_train_cols if c not in train_df.columns]
+    missing_test = [c for c in required_test_cols if c not in test_df.columns]
+
+    if missing_train:
+        raise ValueError(f"Missing columns in train.csv: {missing_train}")
+    if missing_test:
+        raise ValueError(f"Missing columns in test_blinded.csv: {missing_test}")
+
     logger.info(f"Train: {len(train_df)}, Test: {len(test_df)}")
 
     all_smiles = pd.concat([train_df['SMILES'], test_df['SMILES']]).values
@@ -581,6 +610,24 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
     else:
         logger.info("\n[2/7] Loading cached base features...")
         X_all = ckpt.load_array('X_all')
+        use_rdkit_fp = (mode == 'full')
+        expected_dim = 1024 + 167 + 50 + (2048 if use_rdkit_fp else 0)
+
+        if X_all is None:
+            logger.warning("Cached features not found, recomputing...")
+            X_all = compute_features_gpu(all_smiles, use_maccs=True,
+                                         use_rdkit_fp=use_rdkit_fp, checkpoint_mgr=ckpt)
+            ckpt.save_array('X_all', X_all)
+        elif X_all.shape[0] != len(all_smiles):
+            logger.warning(f"Cached features have wrong sample count ({X_all.shape[0]} vs {len(all_smiles)}), recomputing...")
+            X_all = compute_features_gpu(all_smiles, use_maccs=True,
+                                         use_rdkit_fp=use_rdkit_fp, checkpoint_mgr=ckpt)
+            ckpt.save_array('X_all', X_all)
+        elif X_all.shape[1] != expected_dim:
+            logger.warning(f"Cached features dimension mismatch ({X_all.shape[1]} vs {expected_dim}), recomputing...")
+            X_all = compute_features_gpu(all_smiles, use_maccs=True,
+                                         use_rdkit_fp=use_rdkit_fp, checkpoint_mgr=ckpt)
+            ckpt.save_array('X_all', X_all)
 
     X_train = X_all[:n_train]
     X_test = X_all[n_train:]
@@ -669,20 +716,31 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
             mask = ~np.isnan(y)
             X_t, y_t = X_train[mask], y[mask]
 
+            if len(y_t) < 20:
+                logger.warning(f"Skipping GBDT for {target}: only {len(y_t)} valid samples")
+                # Use mean as fallback prediction
+                gbdt_predictions[target] = np.full(len(X_test), np.mean(y_t) if len(y_t) > 0 else 0.0)
+                continue
+
             hp = HYPERPARAMS_GPU[target].copy()
             if mode == 'quick':
                 hp['n_estimators'] = min(hp['n_estimators'], 400)
 
-            ensemble = GPUStackingEnsemble(use_gpu=use_gpu, n_folds=5)
-            result = ensemble.fit(X_t, y_t, hp, target_name=target)
-            results[target] = result
+            try:
+                ensemble = GPUStackingEnsemble(use_gpu=use_gpu, n_folds=5)
+                result = ensemble.fit(X_t, y_t, hp, target_name=target)
+                results[target] = result
 
-            pred = ensemble.predict(X_test)
-            pred = np.clip(pred, *VALID_RANGES[target])
-            gbdt_predictions[target] = pred
+                pred = ensemble.predict(X_test)
+                pred = np.clip(pred, *VALID_RANGES[target])
+                gbdt_predictions[target] = pred
 
-            logger.info(f"  {target}: RAE={result['RAE']:.4f}, Spearman={result['Spearman']:.4f}")
-            clear_gpu_memory()
+                logger.info(f"  {target}: RAE={result['RAE']:.4f}, Spearman={result['Spearman']:.4f}")
+            except Exception as e:
+                logger.error(f"GBDT training failed for {target}: {e}")
+                gbdt_predictions[target] = np.full(len(X_test), np.mean(y_t))
+            finally:
+                clear_gpu_memory()
 
         ckpt.save_predictions('gbdt', gbdt_predictions)
         ckpt.state['results'] = results
@@ -699,21 +757,27 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
 
         if not ckpt.is_stage_complete('multitask_training') or mt_predictions is None:
             logger.info("\n[6/7] Training Multi-task Neural Network...")
+            try:
+                y_dict = {t: train_df[t].values for t in TARGETS}
+                epochs = 50 if mode == 'quick' else 100
 
-            y_dict = {t: train_df[t].values for t in TARGETS}
-            epochs = 50 if mode == 'quick' else 100
+                mt_trainer = MultiTaskTrainer(
+                    input_dim=X_train.shape[1],
+                    hidden_dim=512,
+                    lr=1e-3,
+                )
+                mt_trainer.fit(X_train, y_dict, epochs=epochs, verbose=True)
+                mt_predictions = mt_trainer.predict(X_test)
 
-            mt_trainer = MultiTaskTrainer(
-                input_dim=X_train.shape[1],
-                hidden_dim=512,
-                lr=1e-3,
-            )
-            mt_trainer.fit(X_train, y_dict, epochs=epochs, verbose=True)
-            mt_predictions = mt_trainer.predict(X_test)
-
-            ckpt.save_predictions('multitask', mt_predictions)
-            ckpt.mark_stage_complete('multitask_training')
-            clear_gpu_memory()
+                ckpt.save_predictions('multitask', mt_predictions)
+                ckpt.mark_stage_complete('multitask_training')
+            except Exception as e:
+                logger.error(f"Multi-task training failed: {e}")
+                logger.warning("Continuing without multi-task predictions")
+                mt_predictions = None
+                ckpt.mark_stage_complete('multitask_training')
+            finally:
+                clear_gpu_memory()
         else:
             logger.info("\n[6/7] Loaded cached Multi-task predictions")
     else:
@@ -739,6 +803,10 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
                     mask = ~np.isnan(y)
                     valid_smiles = [train_smiles[i] for i, m in enumerate(mask) if m]
                     valid_y = y[mask]
+
+                    if len(valid_smiles) < 10:
+                        logger.warning(f"Skipping Chemprop for {target}: only {len(valid_smiles)} valid samples")
+                        continue
 
                     ensemble = ChempropEnsemble(target, n_models=n_models)
                     ensemble.fit(valid_smiles, valid_y, verbose=False)
@@ -768,20 +836,31 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
     predictions = {}
     n_model_types = 1 + (1 if mt_predictions else 0) + (1 if cp_predictions else 0)
 
+    if gbdt_predictions is None:
+        raise RuntimeError("GBDT predictions not available - cannot blend")
+
     for target in TARGETS:
+        if target not in gbdt_predictions:
+            logger.error(f"Missing GBDT prediction for {target}")
+            raise RuntimeError(f"Missing GBDT prediction for {target}")
+
         gbdt_pred = gbdt_predictions[target]
 
         if n_model_types == 1:
             blended = gbdt_pred
         elif n_model_types == 2:
-            if mt_predictions:
+            if mt_predictions and target in mt_predictions:
                 blended = 0.7 * gbdt_pred + 0.3 * mt_predictions[target]
-            else:
+            elif cp_predictions and target in cp_predictions:
                 blended = 0.75 * gbdt_pred + 0.25 * cp_predictions[target]
+            else:
+                blended = gbdt_pred  # Fallback to GBDT only
         else:
+            mt_pred = mt_predictions.get(target, gbdt_pred) if mt_predictions else gbdt_pred
+            cp_pred = cp_predictions.get(target, gbdt_pred) if cp_predictions else gbdt_pred
             blended = (0.6 * gbdt_pred +
-                      0.25 * mt_predictions[target] +
-                      0.15 * cp_predictions[target])
+                      0.25 * mt_pred +
+                      0.15 * cp_pred)
 
         predictions[target] = np.clip(blended, *VALID_RANGES[target])
 
@@ -805,8 +884,11 @@ def run_pipeline(mode='full', use_multitask=True, use_chemprop=True,
             r = results[t]
             logger.info(f"{t:35s}: RAE={r['RAE']:.4f}, Spearman={r['Spearman']:.4f}")
 
-    ma_rae = np.mean(raes)
-    logger.info(f"\n{'MA-RAE':35s}: {ma_rae:.4f}")
+    if raes:
+        ma_rae = np.mean(raes)
+        logger.info(f"\n{'MA-RAE':35s}: {ma_rae:.4f}")
+    else:
+        logger.warning("No RAE scores available (results may have been loaded from cache)")
 
     # Save submission
     sub = pd.DataFrame({'Molecule Name': test_df['Molecule Name']})
