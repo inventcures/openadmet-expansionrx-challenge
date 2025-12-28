@@ -356,12 +356,12 @@ class V3Pipeline:
                     reg_lambda=0.1,
                     random_state=42 + fold,
                     verbosity=0,
-                    n_jobs=-1
+                    n_jobs=-1,
+                    early_stopping_rounds=50  # Moved to constructor for newer XGBoost
                 )
                 model.fit(
                     X_tr, y_tr,
                     eval_set=[(X_val, y_val)],
-                    early_stopping_rounds=50,
                     verbose=False
                 )
             elif model_type == 'catboost' and CB_AVAILABLE:
