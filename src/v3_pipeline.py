@@ -189,8 +189,8 @@ class V3Pipeline:
 
     def load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Load training and test data"""
-        train_path = BASE_DIR / "data" / "train.csv"
-        test_path = BASE_DIR / "data" / "test.csv"
+        train_path = BASE_DIR / "data" / "raw" / "train.csv"
+        test_path = BASE_DIR / "data" / "raw" / "test_blinded.csv"
 
         self.logger.info(f"Loading data from {BASE_DIR / 'data'}")
         train_df = pd.read_csv(train_path)
