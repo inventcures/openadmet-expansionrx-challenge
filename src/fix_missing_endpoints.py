@@ -137,6 +137,7 @@ def main():
     submission = pd.read_csv(submission_path)
 
     smiles_test = test_df['SMILES'].tolist()
+    molecule_names = test_df['Molecule Name'].tolist()
     n_test = len(smiles_test)
 
     print(f"Test samples: {n_test}")
@@ -146,7 +147,7 @@ def main():
     if len(submission) != n_test:
         print(f"\n⚠️  WARNING: Submission has {len(submission)} rows but test set has {n_test}!")
         print("Creating new submission from scratch...")
-        submission = pd.DataFrame({'SMILES': smiles_test})
+        submission = pd.DataFrame({'Molecule Name': molecule_names, 'SMILES': smiles_test})
 
     # Find missing endpoints
     existing_endpoints = [c for c in submission.columns if c in ALL_ENDPOINTS]
@@ -229,8 +230,12 @@ def main():
         still_missing = [e for e in ALL_ENDPOINTS if e not in final_columns]
         print(f"Still missing: {still_missing}")
 
-    # Reorder columns to match expected order
-    ordered_columns = ['SMILES'] + [e for e in ALL_ENDPOINTS if e in submission.columns]
+    # Add Molecule Name if missing
+    if 'Molecule Name' not in submission.columns:
+        submission.insert(0, 'Molecule Name', molecule_names)
+
+    # Reorder columns to match expected order (Molecule Name first, then endpoints, NO SMILES)
+    ordered_columns = ['Molecule Name'] + [e for e in ALL_ENDPOINTS if e in submission.columns]
     submission = submission[ordered_columns]
 
     # Validate row count
