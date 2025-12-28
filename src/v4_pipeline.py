@@ -279,7 +279,7 @@ except ImportError:
 
 # Import existing modules
 try:
-    from extended_fingerprints import ExtendedFingerprinter
+    from extended_fingerprints import compute_all_features as compute_extended_features
     FINGERPRINTS_AVAILABLE = True
 except ImportError:
     FINGERPRINTS_AVAILABLE = False
@@ -386,9 +386,9 @@ def get_dependency_status() -> Dict[str, bool]:
 def compute_features(smiles: List[str], verbose: bool = True) -> Dict[str, np.ndarray]:
     """Compute all feature sets for molecules."""
     if not FINGERPRINTS_AVAILABLE:
-        raise ImportError("ExtendedFingerprinter not available")
-    fingerprinter = ExtendedFingerprinter()
-    features = fingerprinter.compute_all_features(smiles, verbose=verbose)
+        raise ImportError("extended_fingerprints module not available")
+    # compute_extended_features is the standalone function from extended_fingerprints.py
+    features = compute_extended_features(smiles, verbose=verbose)
     return features
 
 
