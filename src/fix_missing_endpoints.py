@@ -36,6 +36,14 @@ ALL_ENDPOINTS = [
     'MGMB'
 ]
 
+# Endpoints that must be non-negative (biologically impossible to have negative values)
+NON_NEGATIVE_ENDPOINTS = [
+    'KSOL', 'HLM CLint', 'MLM CLint',
+    'Caco-2 Permeability Papp A>B', 'Caco-2 Permeability Efflux',
+    'MPPB', 'MBPB', 'MGMB'
+]
+CLIP_MIN = 0.001
+
 
 def train_lgb_ensemble(X_train, y_train, X_test, n_seeds=3, n_folds=5, verbose=True):
     """Train LightGBM ensemble with CV."""
@@ -202,6 +210,13 @@ def main():
             X_train, endpoint_y, X_test,
             n_seeds=3, n_folds=5, verbose=True
         )
+
+        # Apply clipping for non-negative endpoints
+        if endpoint in NON_NEGATIVE_ENDPOINTS:
+            n_negative = np.sum(predictions < 0)
+            if n_negative > 0:
+                print(f"  ⚠️  Clipping {n_negative}/{len(predictions)} negative predictions")
+                predictions = np.clip(predictions, CLIP_MIN, None)
 
         # Add to submission
         submission[endpoint] = predictions

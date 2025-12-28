@@ -355,6 +355,22 @@ ENDPOINTS = [
     'MGMB'
 ]
 
+# Endpoints that must be non-negative (biologically impossible to have negative values)
+# LogD can be negative (lipophilicity), so it's excluded
+NON_NEGATIVE_ENDPOINTS = [
+    'KSOL',           # Solubility - must be positive
+    'HLM CLint',      # Clearance - must be positive
+    'MLM CLint',      # Clearance - must be positive
+    'Caco-2 Permeability Papp A>B',  # Permeability - must be positive
+    'Caco-2 Permeability Efflux',    # Efflux ratio - must be positive
+    'MPPB',           # Protein binding - must be positive
+    'MBPB',           # Protein binding - must be positive
+    'MGMB'            # Protein binding - must be positive
+]
+
+# Minimum value for clipping (small positive to avoid log(0) issues)
+CLIP_MIN = 0.001
+
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -946,7 +962,16 @@ class V4Pipeline:
                 # Load saved predictions
                 saved = self.checkpoint.load_endpoint_predictions(endpoint)
                 if saved:
-                    predictions[endpoint] = saved['test_preds']
+                    test_preds = saved['test_preds']
+                    # Apply clipping for non-negative endpoints (in case old checkpoint lacks clipping)
+                    if endpoint in NON_NEGATIVE_ENDPOINTS:
+                        n_negative = np.sum(test_preds < 0)
+                        if n_negative > 0:
+                            self.logger.warning(
+                                f"⚠️  Clipping {n_negative} negative predictions from checkpoint for {endpoint}"
+                            )
+                            test_preds = np.clip(test_preds, CLIP_MIN, None)
+                    predictions[endpoint] = test_preds
                     all_diagnostics[endpoint] = saved['diagnostics']
                 continue
 
@@ -965,6 +990,16 @@ class V4Pipeline:
                     endpoint_y,
                     smiles_test
                 )
+
+                # Apply clipping for non-negative endpoints
+                if endpoint in NON_NEGATIVE_ENDPOINTS:
+                    n_negative = np.sum(test_preds < 0)
+                    if n_negative > 0:
+                        self.logger.warning(
+                            f"⚠️  Clipping {n_negative}/{len(test_preds)} negative predictions for {endpoint}"
+                        )
+                        test_preds = np.clip(test_preds, CLIP_MIN, None)
+                        diagnostics['clipped_count'] = int(n_negative)
 
                 predictions[endpoint] = test_preds
                 all_diagnostics[endpoint] = diagnostics
@@ -995,16 +1030,24 @@ class V4Pipeline:
         # Print summary
         self.logger.info("\nEndpoint Summary:")
         self.logger.info("─" * 50)
+        total_clipped = 0
         for endpoint in ENDPOINTS:
             if endpoint in all_diagnostics:
                 d = all_diagnostics[endpoint].get('final', {})
+                clipped = all_diagnostics[endpoint].get('clipped_count', 0)
+                total_clipped += clipped
+                clip_str = f" [clipped: {clipped}]" if clipped > 0 else ""
+
                 if 'error' in all_diagnostics[endpoint]:
                     self.logger.info(f"  {endpoint}: ERROR - {all_diagnostics[endpoint]['error']}")
                 elif isinstance(d.get('stacked_spearman'), float):
                     self.logger.info(
                         f"  {endpoint}: Spearman={d['stacked_spearman']:.4f}, "
-                        f"Improvement={d['improvement']:.4f}"
+                        f"Improvement={d['improvement']:.4f}{clip_str}"
                     )
+
+        if total_clipped > 0:
+            self.logger.info(f"\n⚠️  Total predictions clipped to positive: {total_clipped}")
 
         self.logger.info(f"\n{'='*60}")
         self.logger.info(f"Log file: {self.log_dir / f'v4_pipeline_{self.run_id}.log'}")
