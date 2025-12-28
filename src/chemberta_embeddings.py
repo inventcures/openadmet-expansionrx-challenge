@@ -80,22 +80,64 @@ class ChemBERTaEmbedder:
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, cache_dir=CACHE_DIR / "transformers")
 
-        # Load model with optimizations
-        model_kwargs = {}
+        # Try loading with Flash Attention 2 first, fallback if not supported
+        model_loaded = False
 
-        # Try Flash Attention 2 (requires transformers >= 4.36)
-        try:
-            model_kwargs['attn_implementation'] = 'flash_attention_2'
-            print("  Using Flash Attention 2")
-        except:
-            pass
+        # Attempt 1: Flash Attention 2 + BF16 (fastest)
+        if not model_loaded and self.use_bf16:
+            try:
+                print("  Trying Flash Attention 2 + BFloat16...")
+                self.model = AutoModel.from_pretrained(
+                    self.model_name,
+                    cache_dir=CACHE_DIR / "transformers",
+                    attn_implementation='flash_attention_2',
+                    torch_dtype=torch.bfloat16
+                )
+                print("  Using Flash Attention 2 + BFloat16")
+                model_loaded = True
+            except Exception as e:
+                if "does not support Flash Attention" in str(e):
+                    print("  Flash Attention 2 not supported, falling back...")
+                else:
+                    print(f"  Flash Attention failed: {e}")
 
-        # Use BF16 on Ampere+ GPUs (RTX 3090, 4090)
-        if self.use_bf16:
-            model_kwargs['torch_dtype'] = torch.bfloat16
-            print("  Using BFloat16 precision")
+        # Attempt 2: BF16 only (still fast)
+        if not model_loaded and self.use_bf16:
+            try:
+                print("  Trying BFloat16 precision...")
+                self.model = AutoModel.from_pretrained(
+                    self.model_name,
+                    cache_dir=CACHE_DIR / "transformers",
+                    torch_dtype=torch.bfloat16
+                )
+                print("  Using BFloat16 precision")
+                model_loaded = True
+            except Exception as e:
+                print(f"  BFloat16 failed: {e}")
 
-        self.model = AutoModel.from_pretrained(self.model_name, cache_dir=CACHE_DIR / "transformers", **model_kwargs)
+        # Attempt 3: FP16 (good GPU fallback)
+        if not model_loaded and torch.cuda.is_available():
+            try:
+                print("  Trying FP16 precision...")
+                self.model = AutoModel.from_pretrained(
+                    self.model_name,
+                    cache_dir=CACHE_DIR / "transformers",
+                    torch_dtype=torch.float16
+                )
+                print("  Using FP16 precision")
+                model_loaded = True
+            except Exception as e:
+                print(f"  FP16 failed: {e}")
+
+        # Attempt 4: Standard FP32 (always works)
+        if not model_loaded:
+            print("  Using standard FP32 precision")
+            self.model = AutoModel.from_pretrained(
+                self.model_name,
+                cache_dir=CACHE_DIR / "transformers"
+            )
+            model_loaded = True
+
         self.model = self.model.to(self.device)
         self.model.eval()
 
