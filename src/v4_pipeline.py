@@ -342,14 +342,14 @@ except ImportError:
     DEVICE = 'cpu'
 
 
-# Competition endpoints
+# Competition endpoints (must match exact column names in train.csv)
 ENDPOINTS = [
     'LogD',
     'KSOL',
-    'HLM_CLint',
-    'MLM_CLint',
-    'Caco2_Papp',
-    'Caco2_Efflux',
+    'HLM CLint',
+    'MLM CLint',
+    'Caco-2 Permeability Papp A>B',
+    'Caco-2 Permeability Efflux',
     'MPPB',
     'MBPB',
     'MGMB'
